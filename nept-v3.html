@@ -1,0 +1,658 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>NEPT v3 — Productivity OS</title>
+<link href="https://fonts.googleapis.com/css2?family=Fira+Code:wght@300;400;500;600;700&family=Share+Tech+Mono&family=Exo+2:wght@300;400;500;600;700;800;900&display=swap" rel="stylesheet">
+<style>
+:root{
+  --g0:#080a08;--g1:#0d100d;--g2:#131813;--g3:#1a201a;--g4:#212921;--g5:#2a342a;
+  --mint:#87FF65;--green:#ACEB98;--teal:#A4C2A8;--char:#5A5A66;
+  --red:#ff5c5c;--yellow:#ffc857;--blue:#65b8ff;--purple:#c87fff;
+  --tx1:#d0f0c8;--tx2:#7a9a72;--tx3:#4a6044;--tx4:#2e3d2c;
+  --brd:rgba(135,255,101,0.05);--brd2:rgba(135,255,101,0.14);--brdA:rgba(135,255,101,0.25);
+  --glow:rgba(135,255,101,0.1);
+  --fm:'Fira Code','Share Tech Mono',monospace;--fd:'Exo 2',sans-serif;
+  --bar:30px;--r:8px;--rs:5px;
+}
+*{margin:0;padding:0;box-sizing:border-box}
+html,body{height:100%;overflow:hidden}
+body{font-family:var(--fm);background:var(--g0);color:var(--tx1);font-size:12px}
+::-webkit-scrollbar{width:4px}::-webkit-scrollbar-track{background:transparent}::-webkit-scrollbar-thumb{background:rgba(135,255,101,0.12);border-radius:4px}
+::selection{background:rgba(135,255,101,0.25);color:#fff}
+
+canvas#matrix{position:fixed;inset:0;z-index:0;opacity:0.06}
+.crt{position:fixed;inset:0;pointer-events:none;z-index:9999;background:repeating-linear-gradient(0deg,rgba(0,0,0,0.02) 0px,rgba(0,0,0,0.02) 1px,transparent 1px,transparent 3px)}
+
+/* ═══ TASKBAR ═══ */
+.taskbar{height:var(--bar);display:flex;align-items:center;padding:0 8px;background:rgba(8,10,8,0.9);backdrop-filter:blur(14px);border-bottom:1px solid var(--brd);z-index:200;position:relative;gap:0}
+.tb-logo{display:flex;align-items:center;gap:6px;padding-right:12px;border-right:1px solid var(--brd);margin-right:4px}
+.tb-g{width:16px;height:16px;background:linear-gradient(135deg,var(--mint),var(--teal));border-radius:3px;display:flex;align-items:center;justify-content:center;font-family:var(--fd);font-weight:900;font-size:9px;color:var(--g0);box-shadow:0 0 12px rgba(135,255,101,0.2)}
+.tb-n{font-size:10px;font-weight:700;color:var(--mint);letter-spacing:4px;text-shadow:0 0 15px rgba(135,255,101,0.25)}
+.tb-dock{display:flex;gap:1px;flex:1;overflow-x:auto}
+.tb-b{padding:3px 9px;font-size:9px;color:var(--tx4);background:none;border:none;font-family:var(--fm);cursor:pointer;transition:all .1s;border-radius:3px;white-space:nowrap;display:flex;align-items:center;gap:4px}
+.tb-b:hover{color:var(--tx2);background:rgba(135,255,101,0.03)}
+.tb-b.active{color:var(--mint);background:rgba(135,255,101,0.06)}
+.tb-right{display:flex;align-items:center;gap:3px;margin-left:auto}
+.tb-clk{color:var(--tx4);font-size:9px;padding:0 8px;letter-spacing:1px}
+.tb-a{width:20px;height:20px;display:flex;align-items:center;justify-content:center;border-radius:3px;cursor:pointer;color:var(--tx4);font-size:10px;background:none;border:none;transition:all .1s}
+.tb-a:hover{color:var(--mint);background:rgba(135,255,101,0.05)}
+
+.help-float{position:fixed;top:var(--bar);right:0;z-index:190;width:24px;height:24px;display:flex;align-items:center;justify-content:center;background:rgba(135,255,101,0.04);border:1px solid var(--brd);border-radius:0 0 0 var(--rs);cursor:pointer;color:var(--mint);font-size:12px;font-weight:700;transition:all .12s}
+.help-float:hover{background:rgba(135,255,101,0.1)}
+
+/* ═══ WORKSPACE ═══ */
+.workspace{position:relative;width:100%;height:calc(100vh - var(--bar));overflow:hidden;z-index:1}
+
+/* ═══ FLOATING WINDOWS ═══ */
+.fw{
+  position:absolute;display:flex;flex-direction:column;
+  min-width:280px;min-height:180px;
+  background:rgba(13,16,13,0.94);border:1px solid var(--brd);border-radius:var(--r);
+  box-shadow:0 6px 30px rgba(0,0,0,0.4),0 0 1px rgba(135,255,101,0.08);
+  backdrop-filter:blur(8px);overflow:hidden;
+  transition:box-shadow 0.2s, border-color 0.2s, opacity 0.3s, transform 0.25s;
+  z-index:10;
+}
+.fw.hidden{display:none}
+.fw.focused{z-index:50;border-color:var(--brd2);box-shadow:0 10px 40px rgba(0,0,0,0.5),0 0 25px rgba(135,255,101,0.04)}
+.fw.dimmed{opacity:0.12;pointer-events:none;filter:blur(1.5px);transition:opacity 0.35s,filter 0.35s}
+.fw.maximized{border-radius:0;transition:all 0.25s ease}
+.fw.snap-anim{transition:all 0.25s cubic-bezier(0.22,1,0.36,1)}
+
+.fw-tb{height:26px;min-height:26px;display:flex;align-items:center;padding:0 8px;cursor:grab;user-select:none;border-bottom:1px solid var(--brd);background:rgba(135,255,101,0.012);gap:6px}
+.fw-tb:active{cursor:grabbing}
+.fw-dots{display:flex;gap:4px}
+.fw-d{width:9px;height:9px;border-radius:50%;cursor:pointer;border:none;transition:all .1s}
+.d-r{background:var(--red)}.d-r:hover{box-shadow:0 0 6px rgba(255,92,92,.5)}
+.d-y{background:var(--yellow)}.d-y:hover{box-shadow:0 0 6px rgba(255,200,87,.5)}
+.d-g{background:var(--mint)}.d-g:hover{box-shadow:0 0 6px rgba(135,255,101,.5)}
+.fw-title{font-size:8px;letter-spacing:2px;text-transform:uppercase;color:var(--tx4);flex:1;text-align:center;pointer-events:none}
+.fw-body{flex:1;overflow-y:auto;padding:10px;position:relative}
+.fw-resize{position:absolute;bottom:0;right:0;width:16px;height:16px;cursor:nwse-resize}
+.fw-resize::after{content:'';position:absolute;bottom:4px;right:4px;width:6px;height:6px;border-right:1.5px solid var(--tx4);border-bottom:1.5px solid var(--tx4);opacity:0.25}
+
+/* snap guides */
+.snap-guide{position:absolute;background:rgba(135,255,101,0.08);border:1px dashed rgba(135,255,101,0.2);z-index:999;pointer-events:none;border-radius:var(--rs);display:none}
+
+/* ═══ SHARED UI ═══ */
+.sl{font-size:8px;letter-spacing:2.5px;text-transform:uppercase;color:var(--tx4);margin:8px 0 6px;display:flex;align-items:center;gap:6px}
+.sl::after{content:'';flex:1;height:1px;background:var(--brd)}
+.btn{padding:5px 12px;border-radius:4px;border:1px solid var(--brd);background:var(--g3);color:var(--tx2);font-family:var(--fm);font-size:10px;cursor:pointer;transition:all .12s}
+.btn:hover{border-color:var(--brd2);color:var(--tx1)}
+.btn-g{background:rgba(135,255,101,.06);border-color:rgba(135,255,101,.15);color:var(--mint)}
+.btn-g:hover{background:rgba(135,255,101,.12);box-shadow:0 0 12px rgba(135,255,101,.06)}
+.btn-s{padding:3px 8px;font-size:9px}
+.input{width:100%;padding:6px 8px;background:var(--g2);border:1px solid var(--brd);border-radius:4px;color:var(--tx1);font-family:var(--fm);font-size:11px;outline:none;transition:border-color .15s}
+.input:focus{border-color:var(--brd2)}
+textarea.input{resize:vertical;min-height:60px;line-height:1.7}
+.badge{font-size:8px;padding:1px 6px;border-radius:8px;letter-spacing:.5px;font-family:var(--fm)}
+.b-hi{background:rgba(255,92,92,.1);color:var(--red)}.b-md{background:rgba(255,200,87,.08);color:var(--yellow)}.b-lo{background:rgba(135,255,101,.06);color:var(--mint)}
+
+/* ═══ TERMINAL ═══ */
+.t-out{white-space:pre-wrap;word-break:break-all;line-height:1.6;color:var(--tx2)}
+.t-out .c{color:var(--mint)}.t-out .e{color:var(--red)}.t-out .i{color:var(--blue)}.t-out .w{color:var(--yellow)}.t-out .s{color:var(--green)}.t-out .d{color:var(--tx4)}.t-out .a{color:var(--mint);font-weight:600}
+.t-p{display:flex;align-items:center;gap:0;margin-top:4px}
+.t-ps{color:var(--mint);white-space:nowrap;font-size:11px}
+.t-in{flex:1;background:none;border:none;outline:none;color:var(--tx1);font-family:var(--fm);font-size:12px;caret-color:var(--mint)}
+
+/* ═══ POMODORO ═══ */
+.po-w{display:flex;flex-direction:column;align-items:center;padding:6px 0}
+.po-rb{position:relative;width:150px;height:150px}
+.po-rb svg{width:150px;height:150px;transform:rotate(-90deg)}
+.po-bg{fill:none;stroke:var(--g3);stroke-width:4}.po-fg{fill:none;stroke:url(#prG);stroke-width:4;stroke-linecap:round;stroke-dasharray:421;stroke-dashoffset:0;filter:drop-shadow(0 0 4px rgba(135,255,101,.2));transition:stroke-dashoffset .8s linear}
+.po-t{position:absolute;top:50%;left:50%;transform:translate(-50%,-55%);font-size:28px;font-weight:600;color:var(--tx1);cursor:pointer}.po-t:hover{color:var(--mint)}
+.po-ph{position:absolute;top:62%;left:50%;transform:translateX(-50%);font-size:8px;letter-spacing:3px;text-transform:uppercase;color:var(--tx3)}
+.po-btns{display:flex;gap:6px;margin-top:10px}
+.po-modes{display:flex;gap:2px;margin-top:8px;background:var(--g2);border-radius:4px;padding:2px}
+.po-mb{padding:4px 10px;border:none;background:none;font-family:var(--fm);font-size:9px;color:var(--tx3);cursor:pointer;border-radius:3px;transition:all .1s}
+.po-mb.act{background:rgba(135,255,101,.08);color:var(--mint)}
+.po-dots{display:flex;gap:4px;margin-top:8px}
+.po-d{width:6px;height:6px;border-radius:50%;background:var(--g3);border:1px solid var(--tx4)}
+.po-d.dn{background:var(--mint);border-color:var(--mint);box-shadow:0 0 5px rgba(135,255,101,.4)}
+.po-note{width:100%;margin-top:8px;padding:6px 8px;background:var(--g2);border:1px solid var(--brd);border-radius:4px;color:var(--tx1);font-family:var(--fm);font-size:10px;outline:none;resize:none;min-height:32px}
+.po-note::placeholder{color:var(--tx4)}.po-note:focus{border-color:var(--brd2)}
+.po-log{display:flex;flex-direction:column;gap:3px;margin-top:6px;max-height:100px;overflow-y:auto}
+.po-le{display:flex;justify-content:space-between;padding:4px 8px;background:var(--g2);border-radius:3px;font-size:10px}
+.po-ln{font-size:9px;color:var(--tx4);font-style:italic;margin-top:1px}
+.po-edit{position:absolute;inset:0;background:rgba(8,10,8,.94);display:none;flex-direction:column;align-items:center;justify-content:center;gap:8px;z-index:5;border-radius:var(--r)}
+.po-edit.show{display:flex}
+.pe-r{display:flex;align-items:center;gap:8px}
+.pe-r label{font-size:10px;color:var(--tx2);width:70px}
+.pe-r input{width:50px;text-align:center}
+
+/* ═══ TASKS ═══ */
+.ti{display:flex;align-items:center;gap:8px;padding:6px 8px;background:var(--g2);border-radius:4px;margin-bottom:3px;border:1px solid transparent;transition:all .1s}
+.ti:hover{border-color:var(--brd)}
+.tc{width:13px;height:13px;min-width:13px;border-radius:50%;border:1.5px solid var(--tx4);cursor:pointer;transition:all .1s}
+.tc:hover{border-color:var(--mint)}.tc.dn{background:var(--mint);border-color:var(--mint)}
+.tt{flex:1;font-size:11px}.tt.dn{text-decoration:line-through;color:var(--tx4)}
+
+/* ═══ KANBAN ═══ */
+.kb-c{display:flex;gap:6px;height:100%;overflow-x:auto}
+.kb-co{min-width:180px;flex:1;background:var(--g2);border-radius:var(--rs);padding:8px;display:flex;flex-direction:column;border:1px solid var(--brd)}
+.kb-h{display:flex;align-items:center;justify-content:space-between;margin-bottom:8px;padding-bottom:6px;border-bottom:1px solid var(--brd)}
+.kb-n{font-size:9px;letter-spacing:1.5px;text-transform:uppercase;color:var(--tx4)}
+.kb-ct{background:rgba(135,255,101,.06);color:var(--mint);width:16px;height:16px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:8px}
+.kb-cs{flex:1;display:flex;flex-direction:column;gap:4px;overflow-y:auto}
+.kb-cd{background:var(--g1);border:1px solid var(--brd);border-radius:4px;padding:8px;cursor:grab;transition:all .12s;font-size:11px}
+.kb-cd:hover{border-color:var(--brd2);transform:translateY(-1px)}
+.kb-sub{font-size:9px;color:var(--tx4);margin-top:3px}
+
+/* ═══ NOTES ═══ */
+.nl{display:flex;flex-direction:column;gap:2px;max-height:130px;overflow-y:auto;margin-bottom:6px}
+.ni{padding:4px 8px;border-radius:3px;cursor:pointer;font-size:10px;color:var(--tx2);transition:all .1s}
+.ni:hover{background:rgba(135,255,101,.03)}.ni.act{background:rgba(135,255,101,.06);color:var(--mint)}
+
+/* ═══ PLANNER ═══ */
+.pl-r{display:flex;gap:6px;margin-bottom:2px}
+.pl-t{width:42px;font-size:9px;color:var(--tx4);padding-top:4px;text-align:right;flex-shrink:0}
+.pl-s{flex:1;padding:4px 8px;background:var(--g2);border-radius:3px;border:1px solid transparent;font-size:11px;min-height:26px;color:var(--tx2);transition:all .12s;outline:none}
+.pl-s:focus{border-color:var(--brd2)}
+.pl-s.filled{border-left:2px solid var(--mint);color:var(--mint);background:rgba(135,255,101,0.03);text-shadow:0 0 8px rgba(135,255,101,0.15)}
+
+/* ═══ FLASHCARDS ═══ */
+.fc-card{perspective:600px;width:100%;height:140px;cursor:pointer;margin-bottom:8px}
+.fc-inner{position:relative;width:100%;height:100%;transition:transform 0.5s cubic-bezier(0.4,0,0.2,1);transform-style:preserve-3d}
+.fc-card.flipped .fc-inner{transform:rotateY(180deg)}
+.fc-face{position:absolute;inset:0;backface-visibility:hidden;display:flex;align-items:center;justify-content:center;padding:16px;border-radius:var(--r);font-size:13px;text-align:center;line-height:1.5}
+.fc-front{background:var(--g3);border:1px solid var(--brd);color:var(--tx1)}
+.fc-back{background:rgba(135,255,101,0.04);border:1px solid var(--brd2);color:var(--mint);transform:rotateY(180deg)}
+.fc-nav{display:flex;justify-content:center;gap:8px;margin-top:8px}
+.fc-counter{font-size:10px;color:var(--tx4);text-align:center;margin-top:4px}
+.fc-list{display:flex;flex-direction:column;gap:3px;max-height:100px;overflow-y:auto;margin-top:8px}
+.fc-li{display:flex;justify-content:space-between;padding:4px 8px;background:var(--g2);border-radius:3px;font-size:10px;color:var(--tx2)}
+.fc-li .fc-q{flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.fc-li .fc-del{color:var(--red);cursor:pointer;font-size:9px;margin-left:8px}
+
+/* ═══ MATRIX (Eisenhower) ═══ */
+.mx-g{display:grid;grid-template-columns:1fr 1fr;grid-template-rows:1fr 1fr;gap:4px;height:100%}
+.mx-q{background:var(--g2);border-radius:var(--rs);padding:8px;display:flex;flex-direction:column;border:1px solid var(--brd);overflow-y:auto}
+.mx-ql{font-size:7px;letter-spacing:2px;text-transform:uppercase;margin-bottom:6px;display:flex;align-items:center;gap:4px}
+.mx-dt{width:5px;height:5px;border-radius:2px}
+.q1 .mx-dt{background:var(--red)}.q1 .mx-ql{color:var(--red)}
+.q2 .mx-dt{background:var(--yellow)}.q2 .mx-ql{color:var(--yellow)}
+.q3 .mx-dt{background:var(--blue)}.q3 .mx-ql{color:var(--blue)}
+.q4 .mx-dt{background:var(--tx4)}.q4 .mx-ql{color:var(--tx4)}
+.mx-i{font-size:10px;padding:4px 6px;background:var(--g1);border-radius:3px;margin-bottom:3px;cursor:pointer;border:1px solid transparent;transition:all .1s}
+.mx-i:hover{border-color:var(--brd2)}
+
+/* ═══ ANALYTICS ═══ */
+.an-g{display:grid;grid-template-columns:1fr 1fr;gap:6px}
+.an-c{background:var(--g2);border-radius:var(--rs);padding:10px;border:1px solid var(--brd)}
+.an-c h4{font-size:8px;letter-spacing:2px;text-transform:uppercase;color:var(--tx4);margin-bottom:4px}
+.an-b{font-size:24px;font-weight:800;font-family:var(--fd);background:linear-gradient(135deg,var(--mint),var(--green));-webkit-background-clip:text;-webkit-text-fill-color:transparent}
+.hm{display:grid;grid-template-columns:repeat(7,1fr);gap:2px}
+.hm-c{aspect-ratio:1;border-radius:2px;background:var(--g1)}.hm-c.l1{background:rgba(135,255,101,.08)}.hm-c.l2{background:rgba(135,255,101,.18)}.hm-c.l3{background:rgba(135,255,101,.32)}.hm-c.l4{background:rgba(135,255,101,.5)}
+
+/* ═══ SPOTIFY ═══ */
+.sp-w{display:flex;align-items:center;gap:10px;padding:10px;background:var(--g2);border-radius:var(--rs);border:1px solid var(--brd)}
+.sp-a{width:48px;height:48px;border-radius:6px;background:var(--g3);display:flex;align-items:center;justify-content:center;font-size:18px;flex-shrink:0}
+.sp-i{flex:1;min-width:0}
+.sp-tt{font-size:12px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.sp-ar{font-size:10px;color:var(--tx3)}
+.sp-bar{height:3px;background:var(--g3);border-radius:2px;margin-top:5px;overflow:hidden}
+.sp-bf{height:100%;background:var(--mint);border-radius:2px;width:0%;transition:width .5s linear}
+.sp-ctl{display:flex;gap:6px;align-items:center;margin-top:4px}
+.sp-b{background:none;border:none;color:var(--tx3);cursor:pointer;font-size:13px;transition:color .1s;padding:1px}
+.sp-b:hover{color:var(--mint)}
+.sp-con{width:100%;padding:10px;background:rgba(30,215,96,.06);border:1px solid rgba(30,215,96,.15);border-radius:var(--rs);color:#1ed760;font-family:var(--fm);font-size:11px;cursor:pointer;transition:all .12s;text-align:center}
+.sp-con:hover{background:rgba(30,215,96,.12)}
+
+/* ═══ OVERLAYS ═══ */
+.overlay{display:none;position:fixed;inset:0;background:rgba(0,0,0,.6);backdrop-filter:blur(6px);z-index:300;align-items:center;justify-content:center}
+.overlay.show{display:flex}
+.overlay.top{align-items:flex-start;padding-top:16vh}
+.o-panel{background:var(--g1);border:1px solid var(--brd2);border-radius:var(--r);padding:20px;width:420px;max-height:75vh;overflow-y:auto;box-shadow:0 20px 60px rgba(0,0,0,.5)}
+.o-title{font-family:var(--fd);font-size:14px;font-weight:700;color:var(--mint);margin-bottom:14px;text-align:center;letter-spacing:2px}
+.kb-row{display:flex;justify-content:space-between;padding:5px 0;border-bottom:1px solid var(--brd);font-size:10px}
+.kb-key{font-size:9px;color:var(--mint);background:var(--g3);padding:2px 7px;border-radius:3px;border:1px solid var(--brd)}
+.kb-desc{color:var(--tx2)}
+
+.cap-box{width:420px;background:var(--g1);border:1px solid var(--brd2);border-radius:var(--r);overflow:hidden;box-shadow:0 20px 60px rgba(0,0,0,.5)}
+.cap-in{width:100%;padding:14px 16px;background:none;border:none;border-bottom:1px solid var(--brd);color:var(--tx1);font-family:var(--fm);font-size:13px;outline:none}
+.cap-in::placeholder{color:var(--tx4)}
+.cap-ft{display:flex;gap:4px;padding:8px 12px;align-items:center}
+.cap-t{padding:3px 8px;border-radius:10px;font-size:9px;cursor:pointer;border:1px solid var(--brd);color:var(--tx4);background:none;font-family:var(--fm);transition:all .1s}
+.cap-t:hover{border-color:var(--brd2);color:var(--tx2)}
+.cap-t.act{border-color:var(--brdA);color:var(--mint);background:rgba(135,255,101,.04)}
+.cap-h{margin-left:auto;font-size:8px;color:var(--tx4)}
+</style>
+</head>
+<body>
+
+<canvas id="matrix"></canvas>
+<div class="crt"></div>
+<svg style="position:absolute;width:0;height:0"><defs><linearGradient id="prG" x1="0%" y1="0%" x2="100%" y2="100%"><stop offset="0%" stop-color="#87FF65"/><stop offset="100%" stop-color="#A4C2A8"/></linearGradient></defs></svg>
+
+<!-- TASKBAR -->
+<div class="taskbar">
+  <div class="tb-logo"><div class="tb-g">N</div><span class="tb-n">NEPT</span></div>
+  <div class="tb-dock" id="dock"></div>
+  <div class="tb-right">
+    <span class="tb-clk" id="clk">00:00</span>
+    <button class="tb-a" title="Capture (Ctrl+Space)" onclick="openCap()">⚡</button>
+    <button class="tb-a" title="Focus (Ctrl+F)" id="fBtn" onclick="toggleFocus()">◎</button>
+  </div>
+</div>
+<div class="help-float" onclick="toggleHelp()">?</div>
+
+<!-- WORKSPACE -->
+<div class="workspace" id="ws">
+  <div class="snap-guide" id="snapL"></div>
+  <div class="snap-guide" id="snapR"></div>
+  <div class="snap-guide" id="snapFull"></div>
+</div>
+
+<!-- HELP OVERLAY -->
+<div class="overlay" id="helpOv" onclick="if(event.target===this)toggleHelp()">
+  <div class="o-panel">
+    <div class="o-title">NEPT KEYBINDS</div>
+    <div class="kb-row"><span class="kb-desc">Quick capture</span><span class="kb-key">Ctrl+Space</span></div>
+    <div class="kb-row"><span class="kb-desc">Focus mode</span><span class="kb-key">Ctrl+F</span></div>
+    <div class="kb-row"><span class="kb-desc">Help</span><span class="kb-key">?</span></div>
+    <div class="kb-row"><span class="kb-desc">Close overlay</span><span class="kb-key">Esc</span></div>
+    <div style="margin-top:12px"><div class="o-title" style="font-size:12px">TERMINAL COMMANDS</div>
+    <div class="kb-row"><span class="kb-desc">Add task</span><span class="kb-key">set task [pri] "text"</span></div>
+    <div class="kb-row"><span class="kb-desc">List tasks</span><span class="kb-key">ls tasks</span></div>
+    <div class="kb-row"><span class="kb-desc">Done / Remove</span><span class="kb-key">done # / rm task #</span></div>
+    <div class="kb-row"><span class="kb-desc">Add flashcard</span><span class="kb-key">set card "q" "a"</span></div>
+    <div class="kb-row"><span class="kb-desc">Study flashcards</span><span class="kb-key">study</span></div>
+    <div class="kb-row"><span class="kb-desc">Add note</span><span class="kb-key">set note "title"</span></div>
+    <div class="kb-row"><span class="kb-desc">Add kanban</span><span class="kb-key">set kanban [col] "title"</span></div>
+    <div class="kb-row"><span class="kb-desc">Move kanban</span><span class="kb-key">mv kanban [id] [col]</span></div>
+    <div class="kb-row"><span class="kb-desc">Pomodoro</span><span class="kb-key">pomo start|stop|reset|set #</span></div>
+    <div class="kb-row"><span class="kb-desc">Open/close window</span><span class="kb-key">open|close [name]</span></div>
+    <div class="kb-row"><span class="kb-desc">Open document</span><span class="kb-key">open document</span></div>
+    <div class="kb-row"><span class="kb-desc">System info</span><span class="kb-key">neofetch</span></div>
+    <div class="kb-row"><span class="kb-desc">Clear</span><span class="kb-key">clear</span></div>
+    </div>
+  </div>
+</div>
+
+<!-- QUICK CAPTURE -->
+<div class="overlay top" id="capOv" onclick="if(event.target===this)closeCap()">
+  <div class="cap-box">
+    <input class="cap-in" id="capIn" placeholder="Quick capture..." onkeydown="if(event.key==='Enter')submitCap()">
+    <div class="cap-ft">
+      <button class="cap-t act" data-t="task" onclick="setCapT('task',this)">Task</button>
+      <button class="cap-t" data-t="note" onclick="setCapT('note',this)">Note</button>
+      <button class="cap-t" data-t="kanban" onclick="setCapT('kanban',this)">Kanban</button>
+      <button class="cap-t" data-t="card" onclick="setCapT('card',this)">Flashcard</button>
+      <span class="cap-h">Enter ↵ · Esc</span>
+    </div>
+  </div>
+</div>
+
+<!-- FILE INPUT (hidden) -->
+<input type="file" id="fileIn" style="display:none" accept=".txt,.md,.html,.json,.csv,.js,.py,.css" onchange="handleFile(event)">
+
+<script>
+// ═══ STATE ═══
+const LS=(k,v)=>v!==undefined?(localStorage.setItem('nv3_'+k,JSON.stringify(v)),v):JSON.parse(localStorage.getItem('nv3_'+k));
+let S=LS('s')||{tasks:[],kanban:{backlog:[],todo:[],doing:[],done:[]},notes:[],curNote:0,planner:{},pomoSessions:0,pomoTotalMin:0,tasksDone:0,streak:0,pomoLog:[],pomoTimes:{focus:25,short:5,long:15},heatmap:Array(28).fill(0),scratchpad:'',spotifyConnected:false,flashcards:[],fcIdx:0,winPos:{}};
+const save=()=>LS('s',S);
+
+// ═══ MATRIX RAIN ═══
+(()=>{const c=document.getElementById('matrix'),x=c.getContext('2d');let w,h,co,dr;function rs(){w=c.width=innerWidth;h=c.height=innerHeight;co=Math.floor(w/14);dr=Array(co).fill(1)}rs();addEventListener('resize',rs);const ch='01アイウエオカキクケコサシスセソタチツテトナニヌネノ';(function d(){x.fillStyle='rgba(8,10,8,0.05)';x.fillRect(0,0,w,h);x.fillStyle='#87FF65';x.font='12px Fira Code';for(let i=0;i<co;i++){x.fillText(ch[Math.floor(Math.random()*ch.length)],i*14,dr[i]*14);if(dr[i]*14>h&&Math.random()>.975)dr[i]=0;dr[i]++}setTimeout(d,50)})()})();
+
+// ═══ CLOCK ═══
+setInterval(()=>{document.getElementById('clk').textContent=new Date().toLocaleTimeString('en-US',{hour:'2-digit',minute:'2-digit',second:'2-digit',hour12:false})},1000);
+
+// ═══ WINDOW REGISTRY ═══
+const W={
+  terminal:{l:'Terminal',i:'▸',o:true,x:20,y:20,w:520,h:400,r:renderTerm},
+  pomodoro:{l:'Pomodoro',i:'◉',o:true,x:560,y:20,w:320,h:420,r:renderPomo},
+  tasks:{l:'Tasks',i:'☐',o:false,x:40,y:60,w:400,h:380,r:renderTasks},
+  matrix:{l:'Matrix',i:'◫',o:false,x:460,y:80,w:480,h:380,r:renderMx},
+  kanban:{l:'Kanban',i:'▦',o:false,x:60,y:40,w:650,h:380,r:renderKanban},
+  notes:{l:'Notes',i:'✎',o:false,x:80,y:50,w:520,h:400,r:renderNotes},
+  planner:{l:'Planner',i:'▤',o:false,x:100,y:30,w:400,h:420,r:renderPlanner},
+  analytics:{l:'Analytics',i:'◆',o:false,x:120,y:60,w:460,h:400,r:renderAnalytics},
+  spotify:{l:'Spotify',i:'♫',o:false,x:560,y:200,w:320,h:280,r:renderSpotify},
+  scratchpad:{l:'Scratch',i:'▧',o:false,x:140,y:80,w:380,h:320,r:renderScratch},
+  flashcards:{l:'Cards',i:'◇',o:false,x:200,y:40,w:360,h:420,r:renderFC},
+};
+
+let topZ=50;
+function buildDock(){document.getElementById('dock').innerHTML=Object.entries(W).map(([k,v])=>`<button class="tb-b ${v.o?'active':''}" onclick="toggleW('${k}')"><span style="font-size:11px">${v.i}</span>${v.l}</button>`).join('')}
+
+function toggleW(id){W[id].o=!W[id].o;buildDock();if(W[id].o)spawnWin(id);else despawnWin(id)}
+function openW(id){if(!W[id])return;if(!W[id].o){W[id].o=true;buildDock();spawnWin(id)}focusW(id)}
+function closeW(id){if(!W[id])return;W[id].o=false;buildDock();despawnWin(id)}
+
+function spawnWin(id){
+  const v=W[id],ws=document.getElementById('ws');
+  const pos=S.winPos[id]||{x:v.x,y:v.y,w:v.w,h:v.h};
+  const el=document.createElement('div');
+  el.className='fw';el.id='fw-'+id;
+  el.style.cssText=`left:${pos.x}px;top:${pos.y}px;width:${pos.w}px;height:${pos.h}px;opacity:0;transform:scale(0.95)`;
+  el.innerHTML=`<div class="fw-tb" data-wid="${id}"><div class="fw-dots"><button class="fw-d d-r" onclick="event.stopPropagation();closeW('${id}')"></button><button class="fw-d d-y" onclick="event.stopPropagation();minimizeW('${id}')"></button><button class="fw-d d-g" onclick="event.stopPropagation();maxW('${id}')"></button></div><span class="fw-title">${v.l}</span></div><div class="fw-body" id="b-${id}"></div><div class="fw-resize" data-wid="${id}"></div>`;
+  ws.appendChild(el);
+  requestAnimationFrame(()=>{el.style.opacity='1';el.style.transform='scale(1)'});
+  v.r();focusW(id);
+}
+
+function despawnWin(id){
+  const el=document.getElementById('fw-'+id);
+  if(!el)return;
+  el.style.opacity='0';el.style.transform='scale(0.95)';
+  setTimeout(()=>el.remove(),250);
+}
+
+function minimizeW(id){closeW(id)}
+
+function maxW(id){
+  const el=document.getElementById('fw-'+id);if(!el)return;
+  const ws=document.getElementById('ws');
+  if(el.classList.contains('maximized')){
+    const p=S.winPos[id]||W[id];
+    el.classList.add('snap-anim');
+    el.style.left=p.x+'px';el.style.top=p.y+'px';el.style.width=p.w+'px';el.style.height=p.h+'px';
+    el.classList.remove('maximized');
+    setTimeout(()=>el.classList.remove('snap-anim'),300);
+  }else{
+    saveWinPos(id);
+    el.classList.add('snap-anim','maximized');
+    el.style.left='0';el.style.top='0';el.style.width=ws.clientWidth+'px';el.style.height=ws.clientHeight+'px';
+    setTimeout(()=>el.classList.remove('snap-anim'),300);
+  }
+  focusW(id);
+}
+
+function focusW(id){
+  document.querySelectorAll('.fw').forEach(w=>w.classList.remove('focused'));
+  document.getElementById('fw-'+id)?.classList.add('focused');
+  const el=document.getElementById('fw-'+id);
+  if(el)el.style.zIndex=++topZ;
+  if(id==='terminal')setTimeout(()=>document.getElementById('tIn')?.focus(),60);
+  if(focusMode)updateDim();
+}
+
+function saveWinPos(id){
+  const el=document.getElementById('fw-'+id);if(!el)return;
+  S.winPos[id]={x:parseInt(el.style.left),y:parseInt(el.style.top),w:el.offsetWidth,h:el.offsetHeight};save();
+}
+
+// ═══ DRAG + SNAP ═══
+(()=>{
+  let dg=null,ox,oy,wid;
+  const SNAP=30;
+  document.addEventListener('mousedown',e=>{
+    const tb=e.target.closest('.fw-tb');
+    if(!tb||e.target.closest('.fw-dots'))return;
+    wid=tb.dataset.wid;
+    const el=document.getElementById('fw-'+wid);if(!el||el.classList.contains('maximized'))return;
+    dg=el;const r=el.getBoundingClientRect();ox=e.clientX-r.left;oy=e.clientY-r.top;
+    focusW(wid);e.preventDefault();
+  });
+  document.addEventListener('mousemove',e=>{
+    if(!dg)return;
+    const ws=document.getElementById('ws'),wr=ws.getBoundingClientRect();
+    let x=e.clientX-wr.left-ox,y=e.clientY-wr.top-oy;
+    dg.style.left=x+'px';dg.style.top=y+'px';
+    // Snap guides
+    const sl=document.getElementById('snapL'),sr=document.getElementById('snapR'),sf=document.getElementById('snapFull');
+    sl.style.display='none';sr.style.display='none';sf.style.display='none';
+    if(e.clientX<wr.left+SNAP){sl.style.cssText=`display:block;left:0;top:0;width:${wr.width/2}px;height:${wr.height}px`}
+    else if(e.clientX>wr.right-SNAP){sr.style.cssText=`display:block;left:${wr.width/2}px;top:0;width:${wr.width/2}px;height:${wr.height}px`}
+    else if(e.clientY<wr.top+SNAP+30){sf.style.cssText=`display:block;left:0;top:0;width:${wr.width}px;height:${wr.height}px`}
+  });
+  document.addEventListener('mouseup',e=>{
+    if(!dg)return;
+    const ws=document.getElementById('ws'),wr=ws.getBoundingClientRect();
+    document.getElementById('snapL').style.display='none';
+    document.getElementById('snapR').style.display='none';
+    document.getElementById('snapFull').style.display='none';
+    // Snap
+    if(e.clientX<wr.left+SNAP){
+      dg.classList.add('snap-anim');
+      dg.style.left='0';dg.style.top='0';dg.style.width=(wr.width/2)+'px';dg.style.height=wr.height+'px';
+      setTimeout(()=>dg.classList.remove('snap-anim'),300);
+    }else if(e.clientX>wr.right-SNAP){
+      dg.classList.add('snap-anim');
+      dg.style.left=(wr.width/2)+'px';dg.style.top='0';dg.style.width=(wr.width/2)+'px';dg.style.height=wr.height+'px';
+      setTimeout(()=>dg.classList.remove('snap-anim'),300);
+    }else if(e.clientY<wr.top+SNAP+30){
+      dg.classList.add('snap-anim');
+      dg.style.left='0';dg.style.top='0';dg.style.width=wr.width+'px';dg.style.height=wr.height+'px';
+      setTimeout(()=>dg.classList.remove('snap-anim'),300);
+    }
+    saveWinPos(wid);dg=null;
+  });
+})();
+
+// RESIZE
+(()=>{
+  let rz=null,ow,oh,mx,my,wid;
+  document.addEventListener('mousedown',e=>{
+    const rh=e.target.closest('.fw-resize');if(!rh)return;
+    wid=rh.dataset.wid;rz=document.getElementById('fw-'+wid);
+    ow=rz.offsetWidth;oh=rz.offsetHeight;mx=e.clientX;my=e.clientY;e.preventDefault();
+  });
+  document.addEventListener('mousemove',e=>{if(!rz)return;rz.style.width=Math.max(280,ow+e.clientX-mx)+'px';rz.style.height=Math.max(180,oh+e.clientY-my)+'px'});
+  document.addEventListener('mouseup',()=>{if(rz){saveWinPos(wid);rz=null}});
+})();
+
+document.addEventListener('mousedown',e=>{const w=e.target.closest('.fw');if(w)focusW(w.id.replace('fw-',''))});
+
+// ═══ TERMINAL ═══
+let tHist=[],tHi=-1;
+const MOTD=`<span class="a">
+ ██████   █████ ██████████ ███████████ ███████████
+░░██████ ░░███ ░░███░░░░░█░░███░░░░░███░█░░░███░░░█
+ ░███░███ ░███  ░███  █ ░  ░███    ░███░   ░███  ░
+ ░███░░███░███  ░██████    ░██████████     ░███
+ ░███ ░░██████  ░███░░█    ░███░░░░░░      ░███
+ ░███  ░░█████  ░███ ░   █░███            ░███
+ █████  ░░█████ ██████████ █████           █████
+░░░░░    ░░░░░ ░░░░░░░░░░ ░░░░░           ░░░░░</span>
+<span class="d">───────────────────────────────────────────────</span>
+<span class="i"> Productivity OS v3.0</span>    <span class="d">Type</span> <span class="c">help</span> <span class="d">for commands</span>
+<span class="d">───────────────────────────────────────────────</span>
+`;
+let tBuf=MOTD;
+
+function renderTerm(){
+  const el=document.getElementById('b-terminal');if(!el)return;
+  el.innerHTML=`<div class="t-out" id="tOut">${tBuf}</div><div class="t-p"><span class="t-ps"><span style="color:var(--green)">nept</span><span style="color:var(--tx3)">@</span><span style="color:var(--teal)">os</span> <span style="color:var(--blue)">~</span> <span style="color:var(--mint)">❯</span> </span><input class="t-in" id="tIn" spellcheck="false" onkeydown="tKey(event)"></div>`;
+  const o=document.getElementById('tOut');if(o)o.scrollTop=o.scrollHeight;
+  document.getElementById('tIn')?.focus();
+}
+
+function tKey(e){
+  if(e.key==='Enter'){const v=document.getElementById('tIn').value.trim();if(v){tHist.unshift(v);tHi=-1;exec(v)}document.getElementById('tIn').value=''}
+  else if(e.key==='ArrowUp'){e.preventDefault();if(tHi<tHist.length-1){tHi++;document.getElementById('tIn').value=tHist[tHi]}}
+  else if(e.key==='ArrowDown'){e.preventDefault();if(tHi>0){tHi--;document.getElementById('tIn').value=tHist[tHi]}else{tHi=-1;document.getElementById('tIn').value=''}}
+}
+
+function tO(h){tBuf+=h+'\n';renderTerm()}
+function esc(s){return String(s).replace(/</g,'&lt;').replace(/>/g,'&gt;')}
+
+function parseQuoted(raw){
+  const matches=[];const re=/"([^"]*)"|(\S+)/g;let m;
+  while((m=re.exec(raw))!==null)matches.push(m[1]!==undefined?m[1]:m[2]);
+  return matches;
+}
+
+function exec(raw){
+  tO(`<span class="d">❯</span> <span class="c">${esc(raw)}</span>`);
+  const p=parseQuoted(raw);
+  const c=p[0]?.toLowerCase();
+
+  if(c==='help'){tO(`<span class="i">Commands:</span>
+  <span class="c">set task</span> [high|medium|low] "text"
+  <span class="c">ls tasks</span>  ·  <span class="c">done</span> #  ·  <span class="c">rm task</span> #
+  <span class="c">set card</span> "question" "answer"
+  <span class="c">ls cards</span>  ·  <span class="c">study</span>  ·  <span class="c">rm card</span> #
+  <span class="c">set note</span> "title"  ·  <span class="c">ls notes</span>
+  <span class="c">set kanban</span> [col] "title"  ·  <span class="c">mv kanban</span> [id] [col]
+  <span class="c">pomo</span> start|stop|reset|skip|set [min]
+  <span class="c">open</span> [window]  ·  <span class="c">close</span> [window]
+  <span class="c">open document</span>  ·  <span class="c">neofetch</span>  ·  <span class="c">clear</span>`)}
+  else if(c==='clear'){tBuf='';renderTerm()}
+  else if(c==='neofetch'){tO(`<span class="a">  nept</span><span style="color:var(--tx3)">@</span><span style="color:var(--teal)">os</span>\n  <span class="d">──────────</span>\n  <span class="i">OS:</span> NEPT v3.0\n  <span class="i">Shell:</span> nept-term\n  <span class="i">Tasks:</span> ${S.tasks.length} (${S.tasks.filter(t=>t.done).length} done)\n  <span class="i">Notes:</span> ${S.notes.length}\n  <span class="i">Cards:</span> ${S.flashcards.length}\n  <span class="i">Pomo:</span> ${S.pomoSessions} sessions (${S.pomoTotalMin}m)\n  <span class="i">Streak:</span> ${S.streak} days`)}
+  // SET TASK
+  else if(c==='set'&&p[1]?.toLowerCase()==='task'){
+    let pri='medium',text='';
+    const p2=(p[2]||'').toLowerCase();
+    if(['high','medium','low','hi','med','lo'].includes(p2)){
+      pri={hi:'high',med:'medium',lo:'low',high:'high',medium:'medium',low:'low'}[p2]||'medium';
+      text=p.slice(3).join(' ');
+    }else{text=p.slice(2).join(' ')}
+    if(!text){tO('<span class="e">Usage: set task [high|medium|low] "text"</span>');return}
+    const pm={high:'high',medium:'med',low:'low'};const qm={high:1,medium:2,low:4};
+    S.tasks.push({id:Date.now(),text,done:false,pri:pm[pri],q:qm[pri],created:Date.now()});save();
+    tO(`<span class="s">✓ Task #${S.tasks.length}: "${text}" [${pri}]</span>`);
+    rerender('tasks','matrix');
+  }
+  else if(c==='ls'&&p[1]?.toLowerCase()==='tasks'){
+    if(!S.tasks.length){tO('<span class="d">No tasks.</span>');return}
+    S.tasks.forEach((t,i)=>{const st=t.done?'<span class="s">✓</span>':'<span class="d">○</span>';const pr=t.pri==='high'?'<span class="e">[HI]</span>':t.pri==='med'?'<span class="w">[MD]</span>':'<span class="i">[LO]</span>';tO(`  ${st} <span class="d">#${i+1}</span> ${t.done?'<span class="d">'+esc(t.text)+'</span>':esc(t.text)} ${pr}`)})
+  }
+  else if(c==='done'){const i=parseInt(p[1])-1;if(isNaN(i)||i<0||i>=S.tasks.length){tO('<span class="e">Usage: done #</span>');return}S.tasks[i].done=true;S.tasksDone++;save();tO(`<span class="s">✓ Done: "${S.tasks[i].text}"</span>`);rerender('tasks','matrix')}
+  else if(c==='rm'&&p[1]?.toLowerCase()==='task'){const i=parseInt(p[2])-1;if(isNaN(i)||i<0||i>=S.tasks.length){tO('<span class="e">Usage: rm task #</span>');return}const r=S.tasks.splice(i,1)[0];save();tO(`<span class="w">✗ Removed: "${r.text}"</span>`);rerender('tasks','matrix')}
+  // FLASHCARDS
+  else if(c==='set'&&p[1]?.toLowerCase()==='card'){
+    const q=p[2],a=p[3];
+    if(!q||!a){tO('<span class="e">Usage: set card "question" "answer"</span>');return}
+    S.flashcards.push({id:Date.now(),q,a});save();
+    tO(`<span class="s">✓ Card added: "${q}"</span>`);rerender('flashcards');
+  }
+  else if(c==='ls'&&p[1]?.toLowerCase()==='cards'){
+    if(!S.flashcards.length){tO('<span class="d">No flashcards.</span>');return}
+    S.flashcards.forEach((f,i)=>tO(`  <span class="d">#${i+1}</span> Q: ${esc(f.q)}  A: ${esc(f.a)}`));
+  }
+  else if(c==='rm'&&p[1]?.toLowerCase()==='card'){const i=parseInt(p[2])-1;if(isNaN(i)||i<0||i>=S.flashcards.length){tO('<span class="e">Usage: rm card #</span>');return}S.flashcards.splice(i,1);save();tO('<span class="w">✗ Card removed</span>');rerender('flashcards')}
+  else if(c==='study'){openW('flashcards');tO('<span class="s">📇 Opening flashcards...</span>')}
+  // NOTES
+  else if(c==='set'&&p[1]?.toLowerCase()==='note'){const t=p.slice(2).join(' ');if(!t){tO('<span class="e">Usage: set note "title"</span>');return}S.notes.unshift({id:Date.now(),title:t,body:'',updated:Date.now()});S.curNote=0;save();tO(`<span class="s">✓ Note: "${t}"</span>`);rerender('notes')}
+  else if(c==='ls'&&p[1]?.toLowerCase()==='notes'){if(!S.notes.length){tO('<span class="d">No notes.</span>');return}S.notes.forEach((n,i)=>tO(`  <span class="d">#${i+1}</span> ${esc(n.title||'Untitled')}`))}
+  // KANBAN
+  else if(c==='set'&&p[1]?.toLowerCase()==='kanban'){const col=p[2]?.toLowerCase();const t=p.slice(3).join(' ');if(!['backlog','todo','doing','done'].includes(col)||!t){tO('<span class="e">Usage: set kanban [backlog|todo|doing|done] "title"</span>');return}S.kanban[col].push({id:Date.now(),title:t,tags:[],subs:[]});save();tO(`<span class="s">✓ Card → ${col}: "${t}"</span>`);rerender('kanban')}
+  else if(c==='mv'&&p[1]?.toLowerCase()==='kanban'){const id=parseInt(p[2]),to=p[3]?.toLowerCase();if(!to||!['backlog','todo','doing','done'].includes(to)){tO('<span class="e">Usage: mv kanban [id] [col]</span>');return}let found;for(const col of Object.keys(S.kanban)){const i=S.kanban[col].findIndex(x=>x.id===id);if(i>=0){found=S.kanban[col].splice(i,1)[0];break}}if(!found){tO('<span class="e">Not found</span>');return}S.kanban[to].push(found);save();tO(`<span class="s">✓ Moved → ${to}</span>`);rerender('kanban')}
+  // POMO
+  else if(c==='pomo'){const s=p[1]?.toLowerCase();if(s==='start'){if(!pomo.running)togglePomo();tO('<span class="s">▶ Started</span>')}else if(s==='stop'||s==='pause'){if(pomo.running)togglePomo();tO('<span class="w">⏸ Paused</span>')}else if(s==='reset'){resetPomo();tO('<span class="i">↺ Reset</span>')}else if(s==='skip'){skipPomo();tO('<span class="i">⏭ Skipped</span>')}else if(s==='set'){const m=parseInt(p[2]);if(!m){tO('<span class="e">Usage: pomo set [min]</span>');return}S.pomoTimes.focus=m;save();pomo.timeLeft=m*60;updatePomoUI();tO(`<span class="s">✓ Focus: ${m}min</span>`)}else tO('<span class="e">pomo start|stop|reset|skip|set [min]</span>')}
+  // OPEN / CLOSE
+  else if(c==='open'){
+    if(p[1]?.toLowerCase()==='document'){document.getElementById('fileIn').click();tO('<span class="i">📂 Opening file picker...</span>');return}
+    const w=p[1]?.toLowerCase();if(W[w]){openW(w);tO(`<span class="s">✓ Opened ${w}</span>`)}else tO(`<span class="e">Unknown: ${esc(p[1]||'')}. Try: ${Object.keys(W).join(', ')}</span>`)
+  }
+  else if(c==='close'){const w=p[1]?.toLowerCase();if(W[w]){closeW(w);tO(`<span class="w">✗ Closed ${w}</span>`)}else tO(`<span class="e">Unknown: ${esc(p[1]||'')}</span>`)}
+  else{tO(`<span class="e">Unknown: ${esc(c)}. Type</span> <span class="c">help</span>`)}
+}
+
+function rerender(...ids){ids.forEach(id=>{if(W[id]?.o)W[id].r()})}
+
+// ═══ FILE MANAGER ═══
+function handleFile(e){
+  const file=e.target.files[0];if(!file)return;
+  const reader=new FileReader();
+  reader.onload=ev=>{
+    const content=ev.target.result;
+    // Create a note with the file contents
+    S.notes.unshift({id:Date.now(),title:'📄 '+file.name,body:content,updated:Date.now()});
+    S.curNote=0;save();
+    openW('notes');
+    tO(`<span class="s">✓ Opened: ${esc(file.name)} (${(file.size/1024).toFixed(1)}KB)</span>`);
+    tO(`<span class="d">  Loaded into Notes. Highlight text to annotate.</span>`);
+  };
+  reader.readAsText(file);
+  e.target.value='';
+}
+
+// ═══ POMODORO ═══
+const CIRC=2*Math.PI*67;
+let pomo={running:false,mode:'focus',timeLeft:S.pomoTimes.focus*60,interval:null};
+function getPT(){return S.pomoTimes[pomo.mode]*60}
+function updatePomoUI(){const m=Math.floor(pomo.timeLeft/60),s=pomo.timeLeft%60;const t=`${String(m).padStart(2,'0')}:${String(s).padStart(2,'0')}`;const el=document.getElementById('pT');if(el)el.textContent=t;const r=document.getElementById('pR');if(r)r.style.strokeDashoffset=CIRC*(1-(1-pomo.timeLeft/getPT()));const ph=document.getElementById('pPh');if(ph)ph.textContent={focus:'Focus',short:'Short Break',long:'Long Break'}[pomo.mode]}
+function togglePomo(){if(pomo.running){clearInterval(pomo.interval);pomo.running=false}else{pomo.running=true;pomo.interval=setInterval(()=>{pomo.timeLeft--;if(pomo.timeLeft<=0){clearInterval(pomo.interval);pomo.running=false;if(pomo.mode==='focus'){S.pomoSessions++;S.pomoTotalMin+=S.pomoTimes.focus;const n=document.getElementById('pN')?.value.trim()||'';S.pomoLog.unshift({time:new Date().toLocaleTimeString('en-US',{hour:'2-digit',minute:'2-digit'}),dur:S.pomoTimes.focus,note:n});if(document.getElementById('pN'))document.getElementById('pN').value='';S.heatmap[27]=Math.min(4,(S.heatmap[27]||0)+1);save()}playBell();setPomoMode(pomo.mode==='focus'?(S.pomoSessions%4===0?'long':'short'):'focus')}updatePomoUI()},1000)}renderPomo()}
+function resetPomo(){clearInterval(pomo.interval);pomo.running=false;pomo.timeLeft=getPT();renderPomo()}
+function skipPomo(){clearInterval(pomo.interval);pomo.running=false;setPomoMode(pomo.mode==='focus'?'short':'focus')}
+function setPomoMode(m){pomo.mode=m;pomo.timeLeft=S.pomoTimes[m]*60;pomo.running=false;clearInterval(pomo.interval);renderPomo()}
+function playBell(){try{const c=new(window.AudioContext||window.webkitAudioContext)(),o=c.createOscillator(),g=c.createGain();o.connect(g);g.connect(c.destination);o.frequency.value=830;o.type='sine';g.gain.setValueAtTime(.2,c.currentTime);g.gain.exponentialRampToValueAtTime(.001,c.currentTime+1);o.start();o.stop(c.currentTime+1)}catch(e){}}
+
+function renderPomo(){const el=document.getElementById('b-pomodoro');if(!el)return;el.innerHTML=`<div class="po-edit" id="pE"><div class="sl">Edit Timer</div><div class="pe-r"><label>Focus</label><input class="input" type="number" id="eF" value="${S.pomoTimes.focus}" min="1" max="120"></div><div class="pe-r"><label>Short</label><input class="input" type="number" id="eS" value="${S.pomoTimes.short}" min="1" max="30"></div><div class="pe-r"><label>Long</label><input class="input" type="number" id="eL" value="${S.pomoTimes.long}" min="1" max="60"></div><div style="display:flex;gap:6px;margin-top:6px"><button class="btn btn-g" onclick="applyPE()">Apply</button><button class="btn" onclick="closePE()">Cancel</button></div></div><div class="po-w"><div class="po-rb"><svg viewBox="0 0 150 150"><circle class="po-bg" cx="75" cy="75" r="67"/><circle class="po-fg" id="pR" cx="75" cy="75" r="67"/></svg><div class="po-t" id="pT" onclick="if(!pomo.running)openPE()">--:--</div><div class="po-ph" id="pPh">Focus</div></div><div class="po-btns"><button class="btn btn-g" onclick="togglePomo()">${pomo.running?'PAUSE':'START'}</button><button class="btn" onclick="resetPomo()">RESET</button><button class="btn" onclick="skipPomo()">SKIP</button></div><div class="po-modes"><button class="po-mb ${pomo.mode==='focus'?'act':''}" onclick="setPomoMode('focus')">Focus</button><button class="po-mb ${pomo.mode==='short'?'act':''}" onclick="setPomoMode('short')">Short</button><button class="po-mb ${pomo.mode==='long'?'act':''}" onclick="setPomoMode('long')">Long</button></div><div class="po-dots">${Array(4).fill(0).map((_,i)=>`<div class="po-d ${i<S.pomoSessions%4?'dn':''}"></div>`).join('')}</div></div><textarea class="po-note" id="pN" placeholder="Session note..."></textarea><div class="sl">Log</div><div class="po-log">${S.pomoLog.slice(0,10).map(e=>`<div class="po-le"><div><span style="color:var(--mint)">●</span> ${e.dur}m${e.note?`<div class="po-ln">"${esc(e.note)}"</div>`:''}</div><span style="color:var(--tx4)">${e.time}</span></div>`).join('')}</div>`;updatePomoUI()}
+function openPE(){document.getElementById('pE')?.classList.add('show')}
+function closePE(){document.getElementById('pE')?.classList.remove('show')}
+function applyPE(){S.pomoTimes.focus=parseInt(document.getElementById('eF')?.value)||25;S.pomoTimes.short=parseInt(document.getElementById('eS')?.value)||5;S.pomoTimes.long=parseInt(document.getElementById('eL')?.value)||15;save();closePE();pomo.timeLeft=S.pomoTimes[pomo.mode]*60;updatePomoUI()}
+
+// ═══ TASKS ═══
+function renderTasks(){const el=document.getElementById('b-tasks');if(!el)return;el.innerHTML=`<div style="display:flex;gap:4px;margin-bottom:8px"><input class="input" id="tI" placeholder="New task..." onkeydown="if(event.key==='Enter')addTG()"><select class="input" id="tP" style="width:65px;font-size:10px"><option value="high">High</option><option value="med" selected>Med</option><option value="low">Low</option></select><button class="btn btn-g" onclick="addTG()">+</button></div>${S.tasks.length?S.tasks.map(t=>`<div class="ti"><div class="tc ${t.done?'dn':''}" onclick="tgl(${t.id})"></div><span class="tt ${t.done?'dn':''}">${esc(t.text)}</span><span class="badge b-${t.pri==='high'?'hi':t.pri==='med'?'md':'lo'}">${t.pri}</span></div>`).join(''):'<div style="color:var(--tx4);font-size:10px;padding:12px">Empty. Use terminal: <span style="color:var(--mint)">set task medium "Study Bio"</span></div>'}`}
+function addTG(){const i=document.getElementById('tI');if(!i?.value.trim())return;const p=document.getElementById('tP').value;S.tasks.push({id:Date.now(),text:i.value.trim(),done:false,pri:p,q:p==='high'?1:p==='med'?2:4,created:Date.now()});i.value='';save();renderTasks();rerender('matrix')}
+function tgl(id){const t=S.tasks.find(x=>x.id===id);if(t){t.done=!t.done;if(t.done)S.tasksDone++;save();renderTasks();rerender('matrix')}}
+
+// ═══ MATRIX ═══
+function renderMx(){const el=document.getElementById('b-matrix');if(!el)return;el.innerHTML=`<div class="mx-g">${[{q:1,l:'Urgent + Important',c:'q1'},{q:2,l:'Not Urgent + Important',c:'q2'},{q:3,l:'Urgent + Not Important',c:'q3'},{q:4,l:'Neither',c:'q4'}].map(({q,l,c})=>`<div class="mx-q ${c}"><div class="mx-ql"><span class="mx-dt"></span>${l}</div>${S.tasks.filter(t=>t.q===q&&!t.done).map(t=>`<div class="mx-i" onclick="tgl(${t.id})">${esc(t.text)}</div>`).join('')||'<div style="font-size:9px;color:var(--tx4);padding:4px">—</div>'}</div>`).join('')}</div>`}
+
+// ═══ KANBAN ═══
+let kD=null;
+function renderKanban(){const el=document.getElementById('b-kanban');if(!el)return;const cs=['backlog','todo','doing','done'];el.innerHTML=`<div class="kb-c">${cs.map(c=>`<div class="kb-co"><div class="kb-h"><span class="kb-n">${c==='todo'?'To Do':c==='doing'?'In Progress':c[0].toUpperCase()+c.slice(1)} <span class="kb-ct">${(S.kanban[c]||[]).length}</span></span>${c!=='done'?`<button class="btn-s btn" onclick="addKB('${c}')">+</button>`:''}</div><div class="kb-cs" ondragover="event.preventDefault()" ondrop="dKB('${c}')">${(S.kanban[c]||[]).map(cd=>`<div class="kb-cd" draggable="true" ondragstart="kD={id:${cd.id},from:'${c}'}">${esc(cd.title)}${cd.subs?.length?`<div class="kb-sub">☑ ${cd.subs.filter(s=>s.done).length}/${cd.subs.length}</div>`:''}</div>`).join('')}</div></div>`).join('')}</div>`}
+function addKB(c){const t=prompt('Card:');if(!t)return;S.kanban[c].push({id:Date.now(),title:t,tags:[],subs:[]});save();renderKanban()}
+function dKB(to){if(!kD)return;let cd;for(const c of Object.keys(S.kanban)){const i=S.kanban[c].findIndex(x=>x.id===kD.id);if(i>=0){cd=S.kanban[c].splice(i,1)[0];break}}if(cd){S.kanban[to].push(cd);save();renderKanban()}kD=null}
+
+// ═══ NOTES ═══
+function renderNotes(){const el=document.getElementById('b-notes');if(!el)return;el.innerHTML=`<div style="display:flex;gap:8px;height:100%"><div style="width:130px;flex-shrink:0"><button class="btn btn-g btn-s" style="width:100%;margin-bottom:6px" onclick="newN()">+ New</button><div class="nl">${S.notes.map((n,i)=>`<div class="ni ${i===S.curNote?'act':''}" onclick="selN(${i})">${esc(n.title||'Untitled')}</div>`).join('')}</div></div><div style="flex:1;display:flex;flex-direction:column"><input class="input" id="nT" value="${esc(S.notes[S.curNote]?.title||'')}" placeholder="Title..." style="margin-bottom:4px;font-size:13px;font-weight:600" oninput="svN()"><div style="font-size:8px;color:var(--tx4);margin-bottom:4px">Use [[Title]] for backlinks</div><textarea class="input" id="nB" placeholder="Write..." style="flex:1;min-height:160px;line-height:1.7;font-size:11px;resize:none" oninput="svN()">${esc(S.notes[S.curNote]?.body||'')}</textarea><div id="bl"></div></div></div>`;renderBL()}
+function selN(i){svN();S.curNote=i;save();renderNotes()}
+function svN(){if(!S.notes[S.curNote])return;S.notes[S.curNote].title=document.getElementById('nT')?.value||'';S.notes[S.curNote].body=document.getElementById('nB')?.value||'';S.notes[S.curNote].updated=Date.now();save();renderBL()}
+function newN(){svN();S.notes.unshift({id:Date.now(),title:'',body:'',updated:Date.now()});S.curNote=0;save();renderNotes()}
+function renderBL(){const c=S.notes[S.curNote];if(!c)return;const r=S.notes.filter((n,i)=>i!==S.curNote&&n.body.includes(`[[${c.title}]]`));const el=document.getElementById('bl');if(!el)return;el.innerHTML=r.length?`<div class="sl">Backlinks</div>${r.map(n=>{const i=S.notes.indexOf(n);return`<span style="color:var(--mint);background:rgba(135,255,101,.04);padding:1px 6px;border-radius:3px;cursor:pointer;font-size:10px;margin-right:4px" onclick="selN(${i})">${esc(n.title)}</span>`}).join('')}`:'';}
+
+// ═══ PLANNER ═══
+function renderPlanner(){const el=document.getElementById('b-planner');if(!el)return;const td=new Date().toISOString().slice(0,10);if(!S.planner[td])S.planner[td]={};const hrs=[];for(let h=6;h<=22;h++)hrs.push({h,l:h<12?`${h} AM`:h===12?'12 PM':`${h-12} PM`});el.innerHTML=`<div class="sl">${new Date().toLocaleDateString('en-US',{weekday:'long',month:'short',day:'numeric'})}</div>${hrs.map(({h,l})=>{const v=S.planner[td][h]||'';return`<div class="pl-r"><div class="pl-t">${l}</div><div class="pl-s ${v?'filled':''}" contenteditable="true" oninput="svPl('${td}',${h},this)" onfocus="this.classList.add('filled')" onblur="if(!this.textContent.trim())this.classList.remove('filled')">${esc(v)}</div></div>`}).join('')}`}
+function svPl(d,h,el){if(!S.planner[d])S.planner[d]={};const v=el.textContent.trim();S.planner[d][h]=v;if(v){el.classList.add('filled')}else{el.classList.remove('filled')}save()}
+
+// ═══ FLASHCARDS ═══
+function renderFC(){
+  const el=document.getElementById('b-flashcards');if(!el)return;
+  if(!S.flashcards.length){
+    el.innerHTML=`<div style="text-align:center;padding:20px;color:var(--tx4)"><div style="font-size:24px;margin-bottom:12px">◇</div><div style="font-size:11px;margin-bottom:12px">No flashcards yet</div><div style="font-size:10px">Terminal: <span style="color:var(--mint)">set card "Question" "Answer"</span></div><div style="margin-top:12px;display:flex;gap:4px"><input class="input" id="fcQ" placeholder="Question..."><input class="input" id="fcA" placeholder="Answer..."><button class="btn btn-g" onclick="addFCgui()">+</button></div></div>`;return;
+  }
+  const fc=S.flashcards[S.fcIdx%S.flashcards.length];
+  el.innerHTML=`<div class="fc-card" id="fcCard" onclick="this.classList.toggle('flipped')"><div class="fc-inner"><div class="fc-face fc-front">${esc(fc.q)}</div><div class="fc-face fc-back">${esc(fc.a)}</div></div></div><div class="fc-counter">${(S.fcIdx%S.flashcards.length)+1} / ${S.flashcards.length}  ·  Click card to flip</div><div class="fc-nav"><button class="btn" onclick="S.fcIdx=Math.max(0,S.fcIdx-1);save();renderFC()">← Prev</button><button class="btn" onclick="shuffleFC()">Shuffle</button><button class="btn" onclick="S.fcIdx++;save();renderFC()">Next →</button></div><div style="margin-top:10px;display:flex;gap:4px"><input class="input" id="fcQ" placeholder="Question..."><input class="input" id="fcA" placeholder="Answer..."><button class="btn btn-g btn-s" onclick="addFCgui()">+</button></div><div class="sl" style="margin-top:10px">All Cards</div><div class="fc-list">${S.flashcards.map((f,i)=>`<div class="fc-li"><span class="fc-q">${esc(f.q)}</span><span class="fc-del" onclick="S.flashcards.splice(${i},1);save();renderFC()">✕</span></div>`).join('')}</div>`;
+}
+function addFCgui(){const q=document.getElementById('fcQ')?.value.trim(),a=document.getElementById('fcA')?.value.trim();if(!q||!a)return;S.flashcards.push({id:Date.now(),q,a});save();renderFC()}
+function shuffleFC(){S.flashcards.sort(()=>Math.random()-0.5);S.fcIdx=0;save();renderFC()}
+
+// ═══ ANALYTICS ═══
+function renderAnalytics(){const el=document.getElementById('b-analytics');if(!el)return;el.innerHTML=`<div class="an-g"><div class="an-c"><h4>Focus</h4><div class="an-b">${S.pomoTotalMin}m</div><div style="font-size:9px;color:var(--tx4)">${S.pomoSessions} sessions</div></div><div class="an-c"><h4>Done</h4><div class="an-b">${S.tasksDone}</div><div style="font-size:9px;color:var(--tx4)">${S.tasks.filter(t=>!t.done).length} left</div></div><div class="an-c"><h4>Streak</h4><div class="an-b">${S.streak}d</div></div><div class="an-c"><h4>Notes</h4><div class="an-b">${S.notes.length}</div></div><div class="an-c" style="grid-column:1/-1"><h4>Heatmap</h4><div class="hm">${S.heatmap.map(v=>`<div class="hm-c ${v>0?'l'+Math.min(v,4):''}"></div>`).join('')}</div></div></div>`}
+
+// ═══ SPOTIFY ═══
+let spP=false,spPr=0,spI=null;
+function renderSpotify(){const el=document.getElementById('b-spotify');if(!el)return;if(!S.spotifyConnected){el.innerHTML=`<div style="text-align:center;padding:20px"><div style="font-size:22px;margin-bottom:10px">♫</div><div style="font-size:11px;color:var(--tx2);margin-bottom:14px">Connect Spotify</div><button class="sp-con" onclick="S.spotifyConnected=true;save();renderSpotify();tO('<span class=s>✓ Spotify connected (demo)</span>')">Connect</button></div>`;return}el.innerHTML=`<div class="sp-w"><div class="sp-a">♫</div><div class="sp-i"><div class="sp-tt" id="sT">Not Playing</div><div class="sp-ar" id="sA">—</div><div class="sp-bar"><div class="sp-bf" id="sB"></div></div><div class="sp-ctl"><button class="sp-b" onclick="spPr=0;document.getElementById('sB').style.width='0%'">⏮</button><button class="sp-b" id="sPB" onclick="spTg()" style="font-size:16px">▶</button><button class="sp-b" onclick="spPr=0;document.getElementById('sB').style.width='0%'">⏭</button></div></div></div>`}
+function spTg(){spP=!spP;const b=document.getElementById('sPB');if(b)b.textContent=spP?'⏸':'▶';if(spP){document.getElementById('sT').textContent='Demo Track';document.getElementById('sA').textContent='NEPT Radio';spI=setInterval(()=>{spPr=Math.min(100,spPr+.5);document.getElementById('sB').style.width=spPr+'%'},500)}else clearInterval(spI)}
+
+// ═══ SCRATCHPAD ═══
+function renderScratch(){const el=document.getElementById('b-scratchpad');if(!el)return;el.innerHTML=`<textarea class="input" style="height:100%;resize:none;line-height:1.7;font-size:11px" placeholder="Scratchpad — jot anything..." oninput="S.scratchpad=this.value;save()">${esc(S.scratchpad||'')}</textarea>`}
+
+// ═══ QUICK CAPTURE ═══
+let capT='task';
+function openCap(){document.getElementById('capOv').classList.add('show');document.getElementById('capIn').value='';document.getElementById('capIn').focus()}
+function closeCap(){document.getElementById('capOv').classList.remove('show')}
+function setCapT(t,b){capT=t;document.querySelectorAll('.cap-t').forEach(x=>x.classList.remove('act'));b.classList.add('act')}
+function submitCap(){const v=document.getElementById('capIn').value.trim();if(!v)return;if(capT==='task'){S.tasks.push({id:Date.now(),text:v,done:false,pri:'med',q:2,created:Date.now()});rerender('tasks','matrix')}else if(capT==='note'){S.notes.unshift({id:Date.now(),title:v,body:'',updated:Date.now()});S.curNote=0;rerender('notes')}else if(capT==='kanban'){S.kanban.todo.push({id:Date.now(),title:v,tags:[],subs:[]});rerender('kanban')}else if(capT==='card'){S.flashcards.push({id:Date.now(),q:v,a:'(edit answer)'});rerender('flashcards')}save();closeCap()}
+
+// ═══ FOCUS MODE ═══
+let focusMode=false;
+function toggleFocus(){focusMode=!focusMode;document.getElementById('fBtn').style.color=focusMode?'var(--mint)':'';updateDim()}
+function updateDim(){document.querySelectorAll('.fw').forEach(w=>{if(focusMode&&!w.classList.contains('focused'))w.classList.add('dimmed');else w.classList.remove('dimmed')})}
+
+// ═══ HELP ═══
+function toggleHelp(){document.getElementById('helpOv').classList.toggle('show')}
+
+// ═══ KEYS ═══
+document.addEventListener('keydown',e=>{
+  if((e.ctrlKey||e.metaKey)&&e.code==='Space'){e.preventDefault();openCap()}
+  if((e.ctrlKey||e.metaKey)&&e.key==='f'&&!e.target.closest('input,textarea,[contenteditable]')){e.preventDefault();toggleFocus()}
+  if(e.key==='Escape'){closeCap();document.getElementById('helpOv').classList.remove('show');closePE()}
+  if(e.key==='?'&&!e.target.closest('input,textarea,[contenteditable]')){e.preventDefault();toggleHelp()}
+});
+
+// ═══ INIT ═══
+buildDock();
+Object.entries(W).forEach(([k,v])=>{if(v.o)spawnWin(k)});
+focusW('terminal');
+</script>
+</body>
+</html>
