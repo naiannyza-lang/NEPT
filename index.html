@@ -1,2598 +1,507 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="en" data-mode="dark">
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>NEPT</title>
-<!-- VT323: retro pixel font with full lowercase + symbol support -->
-<link href="https://fonts.googleapis.com/css2?family=VT323&family=Share+Tech+Mono&family=Exo+2:wght@300;400;500;600;700;800;900&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=VT323&family=Share+Tech+Mono&display=swap" rel="stylesheet">
 <style>
-/* ============================================================
-   NEPT — a personal productivity workspace
-   Everything (colors, text, glows) derives from CSS variables
-   so themes can be swapped at runtime. The light mode palette
-   lives under [data-mode="light"] below.
-   ============================================================ */
-:root{
-  /* Neutral grays — no color tint so themes read clean */
-  --g0:#0a0a0a; --g1:#101010; --g2:#161616; --g3:#1c1c1c; --g4:#242424;
-  /* Accent: the one customizable brand color. Border/glow alphas
-     are derived from this dynamically in applyTheme() */
-  --accent:#87FF65;
-  --accent-text:#87FF65;   /* controls tinted text (prompts, highlights) */
-  --titlebar:#161616;       /* window title bar background */
-  --term-prompt:#87FF65;    /* terminal prompt char color */
-  /* Status colors stay constant across themes */
-  --red:#ff5c5c; --yellow:#ffc857; --blue:#65b8ff; --purple:#c87fff;
-  /* Text hierarchy */
-  --tx1:#e8e8e8; --tx2:#999999; --tx3:#666666; --tx4:#444444;
-  /* Borders auto-generated from accent */
-  --brd:rgba(255,255,255,0.05);
-  --brd2:rgba(255,255,255,0.12);
-  --brdA:rgba(255,255,255,0.2);
-  --glass:rgba(14,14,14,0.9);
-  --winAlpha:0.9;
-  /* Fonts — VT323 is the pixel body font, the others are fallbacks */
-  --fm:'VT323','Share Tech Mono',monospace;
-  --fd:'Exo 2',sans-serif;
-  --fmono:'Share Tech Mono',monospace;
-  /* Layout tokens */
-  --bar:32px; --r:8px; --rs:5px;
-}
-[data-mode="light"]{
-  --g0:#f5f5f3; --g1:#ececea; --g2:#e2e2e0; --g3:#d8d8d6; --g4:#cccccc;
-  --tx1:#1a1a1a; --tx2:#555555; --tx3:#888888; --tx4:#aaaaaa;
-  --brd:rgba(0,0,0,0.06); --brd2:rgba(0,0,0,0.12); --brdA:rgba(0,0,0,0.2);
-  --glass:rgba(245,245,243,0.85);
-  --red:#d94040; --yellow:#c89e30; --blue:#3a8ad4; --purple:#9050d0;
-}
-/* ── reset & base ── */
-*{margin:0;padding:0;box-sizing:border-box}
-html,body{height:100%;overflow:hidden}
-body{
-  font-family:var(--fm);
-  background:var(--g0);
-  color:var(--tx1);
-  font-size:16px;  /* VT323 is small, needs bigger base */
-  transition:background 0.4s,color 0.4s;
-  line-height:1.3;
-}
-body.has-bg{background-size:cover;background-position:center;background-attachment:fixed}
-/* slim green-accented scrollbar */
-::-webkit-scrollbar{width:4px}
-::-webkit-scrollbar-track{background:transparent}
-::-webkit-scrollbar-thumb{background:var(--brd2);border-radius:4px}
-::selection{background:rgba(135,255,101,0.2)}
-/* matrix rain lives behind everything */
-canvas#matrix{position:fixed;inset:0;z-index:0;opacity:0.05;transition:opacity 0.4s}
-[data-mode="light"] canvas#matrix{opacity:0.03}
-
-/* ============================================================
-   TASKBAR — the top strip with logo, greeting, dropdowns, clock
-   ============================================================ */
-.taskbar{
-  height:var(--bar);
-  display:flex;align-items:center;
-  padding:0 10px;
-  background:var(--glass);
-  backdrop-filter:blur(16px);
-  border-bottom:1px solid var(--brd);
-  z-index:200;position:relative;
-}
-.tb-logo{
-  display:flex;align-items:center;gap:6px;
-  padding-right:14px;
-  border-right:1px solid var(--brd);
-  margin-right:8px;
-}
-.tb-g{
-  width:18px;height:18px;
-  background:var(--accent);
-  border-radius:4px;
-  display:flex;align-items:center;justify-content:center;
-  font-family:var(--fd);font-weight:900;font-size:11px;
-  color:var(--g0);
-}
-.tb-n{font-size:13px;font-weight:700;color:var(--accent);letter-spacing:4px;font-family:var(--fm)}
-.tb-welcome{
-  font-size:13px;color:var(--tx2);
-  padding:0 14px;border-right:1px solid var(--brd);margin-right:4px;
-  white-space:nowrap;max-width:280px;overflow:hidden;text-overflow:ellipsis;
-}
-.tb-welcome b{color:var(--accent-text);font-weight:400}
-
-/* Dropdown menus — the grouped nav */
-.dd-wrap{position:relative}
-.dd-btn{
-  padding:4px 10px;font-size:13px;
-  color:var(--tx3);background:none;border:none;
-  font-family:var(--fm);cursor:pointer;
-  border-radius:3px;display:flex;align-items:center;gap:4px;
-  transition:all 0.12s;
-}
-.dd-btn:hover,.dd-btn.open{color:var(--tx1);background:var(--brd)}
-.dd-btn .dd-arrow{font-size:8px;transition:transform 0.2s}
-.dd-btn.open .dd-arrow{transform:rotate(180deg)}
-.dd-menu{
-  position:absolute;top:calc(100% + 4px);left:0;
-  min-width:170px;
-  background:var(--glass);backdrop-filter:blur(20px);
-  border:1px solid var(--brd2);border-radius:var(--r);
-  padding:4px;
-  box-shadow:0 8px 30px rgba(0,0,0,0.3);
-  z-index:300;display:none;
-  animation:ddIn 0.25s cubic-bezier(0.16,1,0.3,1);
-}
-.dd-menu.show{display:block}
-@keyframes ddIn{from{opacity:0;transform:translateY(-6px) scale(0.97)}to{opacity:1;transform:translateY(0) scale(1)}}
-.dd-item{
-  display:flex;align-items:center;gap:8px;
-  padding:6px 10px;border-radius:var(--rs);
-  cursor:pointer;font-size:13px;
-  color:var(--tx2);transition:all 0.12s;
-}
-.dd-item:hover{background:var(--brd);color:var(--tx1)}
-.dd-ico{width:16px;text-align:center;font-size:13px}
-.dd-sep{height:1px;background:var(--brd);margin:3px 6px}
-
-.tb-right{display:flex;align-items:center;gap:4px;margin-left:auto}
-.tb-clk{color:var(--tx3);font-size:13px;padding:0 8px;letter-spacing:1px;font-family:var(--fmono)}
-.tb-a{
-  width:24px;height:24px;
-  display:flex;align-items:center;justify-content:center;
-  border-radius:4px;cursor:pointer;
-  color:var(--tx3);font-size:12px;
-  background:none;border:none;transition:all 0.12s;
-}
-.tb-a:hover{color:var(--accent);background:var(--brd)}
-.tb-user{
-  display:flex;align-items:center;gap:5px;
-  padding:3px 10px;border-radius:14px;
-  background:var(--brd);border:1px solid var(--brd);
-  font-size:12px;color:var(--tx2);cursor:pointer;margin-left:4px;
-}
-.tb-user:hover{border-color:var(--brd2)}
-.tb-uav{
-  width:18px;height:18px;border-radius:50%;
-  background:var(--accent);
-  display:flex;align-items:center;justify-content:center;
-  font-size:10px;font-weight:700;color:var(--g0);
-}
-.help-float{
-  position:fixed;top:var(--bar);right:0;z-index:190;
-  width:26px;height:26px;
-  display:flex;align-items:center;justify-content:center;
-  background:var(--brd);border:1px solid var(--brd);
-  border-radius:0 0 0 var(--rs);
-  cursor:pointer;color:var(--accent);
-  font-size:14px;font-weight:700;
-}
-
-/* ============================================================
-   WORKSPACE — the big area where floating windows live
-   ============================================================ */
-.workspace{position:relative;width:100%;height:calc(100vh - var(--bar));overflow:hidden;z-index:1}
-.app-wrap{display:none;flex-direction:column;height:100%}
-.app-wrap.show{display:flex}
-
-/* Floating window — Hyprland-inspired smooth spawn/despawn */
-.fw{
-  position:absolute;display:flex;flex-direction:column;
-  min-width:280px;min-height:180px;
-  border:1px solid var(--brd);border-radius:var(--r);
-  box-shadow:0 6px 30px rgba(0,0,0,0.35);
-  overflow:visible;backdrop-filter:blur(14px);
-  transition:box-shadow 0.25s cubic-bezier(0.16,1,0.3,1),
-             border-color 0.25s,
-             opacity 0.35s,
-             transform 0.35s cubic-bezier(0.16,1,0.3,1);
-  z-index:10;
-}
-.fw.spawning{animation:spawn 0.4s cubic-bezier(0.16,1,0.3,1) forwards}
-@keyframes spawn{from{opacity:0;transform:scale(0.92) translateY(8px)}to{opacity:1;transform:scale(1) translateY(0)}}
-.fw.despawning{animation:despawn 0.3s ease forwards}
-@keyframes despawn{to{opacity:0;transform:scale(0.92) translateY(8px)}}
-.fw.focused{z-index:50;border-color:var(--brd2);box-shadow:0 10px 40px rgba(0,0,0,0.45)}
-.fw.dimmed{opacity:0.12;pointer-events:none;filter:blur(1.5px)}
-.fw.snapping{transition:left 0.3s cubic-bezier(0.16,1,0.3,1),top 0.3s cubic-bezier(0.16,1,0.3,1),width 0.3s cubic-bezier(0.16,1,0.3,1),height 0.3s cubic-bezier(0.16,1,0.3,1)}
-.fw-tb{
-  height:28px;min-height:28px;
-  display:flex;align-items:center;padding:0 10px;
-  cursor:grab;user-select:none;
-  border-bottom:1px solid var(--brd);
-  background:var(--titlebar);
-  gap:6px;border-radius:var(--r) var(--r) 0 0;
-}
-.fw-tb:active{cursor:grabbing}
-.fw-dots{display:flex;gap:5px}
-.fw-d{width:10px;height:10px;border-radius:50%;cursor:pointer;border:none;transition:all 0.1s}
-.d-r{background:var(--red)}.d-y{background:var(--yellow)}.d-g{background:var(--accent)}
-.fw-title{
-  font-size:12px;letter-spacing:2px;text-transform:uppercase;
-  color:var(--tx4);flex:1;text-align:center;pointer-events:none;
-}
-.fw-body{flex:1;overflow:hidden;display:flex;flex-direction:column}
-.fw-inner{flex:1;overflow-y:auto;padding:10px;position:relative}
-
-/* Resize handles on every edge and corner */
-.rh{position:absolute;z-index:2}
-.rh-n{top:-4px;left:10px;right:10px;height:8px;cursor:n-resize}
-.rh-s{bottom:-4px;left:10px;right:10px;height:8px;cursor:s-resize}
-.rh-w{left:-4px;top:10px;bottom:10px;width:8px;cursor:w-resize}
-.rh-e{right:-4px;top:10px;bottom:10px;width:8px;cursor:e-resize}
-.rh-nw{top:-4px;left:-4px;width:14px;height:14px;cursor:nw-resize}
-.rh-ne{top:-4px;right:-4px;width:14px;height:14px;cursor:ne-resize}
-.rh-sw{bottom:-4px;left:-4px;width:14px;height:14px;cursor:sw-resize}
-.rh-se{bottom:-4px;right:-4px;width:14px;height:14px;cursor:se-resize}
-.snap-guide{
-  position:absolute;background:var(--brd);
-  border:1px dashed var(--brd2);z-index:999;pointer-events:none;
-  border-radius:var(--rs);display:none;
-}
-
-/* ============================================================
-   SHARED UI primitives — buttons, inputs, labels, etc.
-   ============================================================ */
-.sl{
-  font-size:11px;letter-spacing:2.5px;text-transform:uppercase;
-  color:var(--tx4);margin:8px 0 6px;
-  display:flex;align-items:center;gap:6px;
-}
-.sl::after{content:'';flex:1;height:1px;background:var(--brd)}
-.btn{
-  padding:5px 12px;border-radius:4px;
-  border:1px solid var(--brd);background:var(--g3);
-  color:var(--tx2);font-family:var(--fm);font-size:12px;
-  cursor:pointer;transition:all 0.15s;
-}
-.btn:hover{border-color:var(--brd2);color:var(--tx1)}
-.btn-g{background:var(--brd);border-color:var(--brdA);color:var(--accent)}
-.btn-g:hover{background:var(--brd2)}
-.btn-s{padding:3px 8px;font-size:11px}
-.btn-d{border-color:rgba(255,92,92,0.3);color:var(--red)}
-.btn-d:hover{background:rgba(255,92,92,0.1)}
-.input{
-  width:100%;padding:6px 8px;
-  background:var(--g2);border:1px solid var(--brd);
-  border-radius:4px;color:var(--tx1);
-  font-family:var(--fm);font-size:13px;outline:none;
-  transition:border-color 0.15s;
-}
-.input:focus{border-color:var(--brdA)}
-.input::placeholder{color:var(--tx4)}
-.badge{font-size:10px;padding:1px 6px;border-radius:8px;font-family:var(--fm)}
-.b-hi{background:rgba(255,92,92,.1);color:var(--red)}
-.b-md{background:rgba(255,200,87,.08);color:var(--yellow)}
-.b-lo{background:var(--brd);color:var(--accent)}
-
-/* Tabs — used in Settings, Flashcards */
-.tab-bar{display:flex;gap:1px;background:var(--g2);border-radius:4px;padding:2px;margin-bottom:8px}
-.tab{
-  flex:1;padding:5px 8px;text-align:center;
-  font-size:11px;cursor:pointer;border-radius:3px;
-  color:var(--tx3);transition:all 0.2s;
-  border:none;background:none;font-family:var(--fm);
-}
-.tab.act{background:var(--brd);color:var(--accent)}
-.tab-content{display:none}
-.tab-content.act{display:block;animation:tabF 0.3s cubic-bezier(0.16,1,0.3,1)}
-@keyframes tabF{from{opacity:0;transform:translateY(4px)}to{opacity:1;transform:translateY(0)}}
-
-/* ============================================================
-   TERMINAL — the main command interface
-   ============================================================ */
-.t-out{
-  white-space:pre-wrap;word-break:break-all;
-  line-height:1.5;color:var(--tx2);
-  font-family:var(--fmono);font-size:14px;
-}
-.t-out .c{color:var(--accent-text)}
-.t-out .e{color:var(--red)}
-.t-out .i{color:var(--blue)}
-.t-out .w{color:var(--yellow)}
-.t-out .s{color:var(--accent)}
-.t-out .d{color:var(--tx4)}
-.t-out .a{color:var(--accent);font-weight:600}
-.t-p{display:flex;align-items:center;margin-top:4px;font-family:var(--fmono)}
-.t-ps{color:var(--term-prompt);white-space:nowrap;font-size:14px}
-.t-in{
-  flex:1;background:none;border:none;outline:none;
-  color:var(--tx1);font-family:var(--fmono);font-size:14px;
-  caret-color:var(--accent);
-}
-
-/* ============================================================
-   TASKS — simple checkable list with priority badges
-   ============================================================ */
-.ti{
-  display:flex;align-items:center;gap:8px;
-  padding:6px 8px;background:var(--g2);
-  border-radius:4px;margin-bottom:3px;
-  border:1px solid transparent;transition:all 0.1s;
-}
-.ti:hover{border-color:var(--brd)}
-.tc{
-  width:14px;height:14px;min-width:14px;
-  border-radius:50%;border:1.5px solid var(--tx4);
-  cursor:pointer;transition:all 0.15s;
-}
-.tc:hover{border-color:var(--accent)}
-.tc.dn{background:var(--accent);border-color:var(--accent)}
-.tt{flex:1;font-size:14px}
-.tt.dn{text-decoration:line-through;color:var(--tx4)}
-
-/* ============================================================
-   KANBAN — columns with draggable cards
-   ============================================================ */
-.kb-c{display:flex;gap:6px;height:100%;overflow-x:auto}
-.kb-co{
-  min-width:160px;flex:1;
-  background:var(--g2);border-radius:var(--rs);
-  padding:8px;display:flex;flex-direction:column;
-  border:1px solid var(--brd);
-}
-.kb-h{
-  display:flex;align-items:center;justify-content:space-between;
-  margin-bottom:6px;padding-bottom:4px;
-  border-bottom:1px solid var(--brd);
-}
-.kb-n{font-size:11px;letter-spacing:1.5px;text-transform:uppercase;color:var(--tx4)}
-.kb-ct{
-  background:var(--brd);color:var(--accent);
-  width:18px;height:18px;border-radius:50%;
-  display:flex;align-items:center;justify-content:center;font-size:10px;
-}
-.kb-cs{flex:1;display:flex;flex-direction:column;gap:3px;overflow-y:auto}
-.kb-cd{
-  background:var(--g1);border:1px solid var(--brd);
-  border-radius:4px;padding:6px 8px;
-  cursor:grab;transition:all 0.15s;font-size:13px;
-}
-.kb-cd:hover{border-color:var(--brd2);transform:translateY(-1px)}
-
-/* ============================================================
-   NOTES — sidebar list + editor
-   ============================================================ */
-.nl{display:flex;flex-direction:column;gap:2px;max-height:140px;overflow-y:auto;margin-bottom:6px}
-.ni{
-  padding:4px 8px;border-radius:3px;
-  cursor:pointer;font-size:12px;color:var(--tx2);
-  transition:all 0.12s;
-}
-.ni:hover{background:var(--brd)}
-.ni.act{background:var(--brd);color:var(--accent)}
-
-/* ============================================================
-   PLANNER — hourly time blocks that glow when filled
-   ============================================================ */
-.pl-r{display:flex;gap:6px;margin-bottom:2px}
-.pl-t{
-  width:50px;font-size:12px;color:var(--tx4);
-  padding-top:4px;text-align:right;flex-shrink:0;
-  font-family:var(--fmono);
-}
-.pl-s{
-  flex:1;padding:4px 8px;
-  background:var(--g2);border-radius:3px;
-  border:1px solid transparent;font-size:13px;
-  min-height:26px;color:var(--tx2);
-  transition:all 0.12s;outline:none;
-}
-.pl-s:focus{border-color:var(--brdA)}
-.pl-s.filled{
-  border-left:2px solid var(--accent);
-  color:var(--accent);background:var(--brd);
-}
-
-/* ============================================================
-   FLASHCARDS — SM-2 spaced repetition, click to flip
-   ============================================================ */
-.fc-card{perspective:800px;width:100%;height:150px;cursor:pointer;margin-bottom:8px}
-.fc-inner{
-  position:relative;width:100%;height:100%;
-  transition:transform 0.5s cubic-bezier(0.16,1,0.3,1);
-  transform-style:preserve-3d;
-}
-.fc-card.flipped .fc-inner{transform:rotateY(180deg)}
-.fc-face{
-  position:absolute;inset:0;backface-visibility:hidden;
-  display:flex;align-items:center;justify-content:center;
-  padding:16px;border-radius:var(--r);
-  font-size:15px;text-align:center;line-height:1.5;
-}
-.fc-front{background:var(--g3);border:1px solid var(--brd);color:var(--tx1)}
-.fc-back{background:var(--brd);border:1px solid var(--brd2);color:var(--accent);transform:rotateY(180deg)}
-.fc-fl{
-  font-size:10px;letter-spacing:2px;text-transform:uppercase;
-  color:var(--tx4);position:absolute;top:8px;left:12px;
-}
+:root{--g0:#0a0a0a;--g1:#111;--g2:#171717;--g3:#1e1e1e;--g4:#262626;--accent:#87FF65;--at:#87FF65;--tp:#87FF65;--tb:#171717;--red:#ff5c5c;--yel:#ffc857;--blu:#65b8ff;--pur:#c87fff;--tx1:#e8e8e8;--tx2:#999;--tx3:#666;--tx4:#444;--brd:rgba(255,255,255,.04);--brd2:rgba(255,255,255,.1);--brdA:rgba(255,255,255,.18);--glass:rgba(14,14,14,.9);--fm:'VT323',monospace;--fm2:'Share Tech Mono',monospace;--bar:34px;--r:8px}
+[data-mode=light]{--g0:#f4f4f2;--g1:#ebebea;--g2:#e1e1df;--g3:#d7d7d5;--g4:#ccc;--tx1:#1a1a1a;--tx2:#555;--tx3:#888;--tx4:#aaa;--brd:rgba(0,0,0,.05);--brd2:rgba(0,0,0,.1);--brdA:rgba(0,0,0,.17);--glass:rgba(244,244,242,.88);--red:#d94040;--yel:#c89e30;--blu:#3a8ad4;--pur:#9050d0}
+*{margin:0;padding:0;box-sizing:border-box}html,body{height:100%;overflow:hidden}
+body{font-family:var(--fm);background:var(--g0);color:var(--tx1);font-size:16px;line-height:1.3;transition:background .3s,color .3s}
+body.has-bg{background-size:cover;background-position:center}
+::-webkit-scrollbar{width:4px}::-webkit-scrollbar-thumb{background:var(--brd2);border-radius:4px}
+::selection{background:rgba(135,255,101,.15)}
+canvas#mx{position:fixed;inset:0;z-index:0;opacity:.05;pointer-events:none}[data-mode=light] canvas#mx{opacity:.02}
+button{font-family:var(--fm);cursor:pointer;border:none;background:none;color:inherit;font-size:inherit}
+.taskbar{height:var(--bar);display:flex;align-items:center;padding:0 10px;background:var(--glass);backdrop-filter:blur(16px);border-bottom:1px solid var(--brd);z-index:200;position:relative}
+.tb-logo{display:flex;align-items:center;gap:6px;padding-right:12px;border-right:1px solid var(--brd);margin-right:6px}
+.tb-lg{width:20px;height:20px;background:var(--accent);border-radius:4px;display:flex;align-items:center;justify-content:center;font-weight:900;font-size:11px;color:var(--g0)}
+.tb-ln{font-size:14px;font-weight:700;color:var(--accent);letter-spacing:4px}
+.tb-w{font-size:13px;color:var(--tx2);padding:0 12px;border-right:1px solid var(--brd);margin-right:4px;white-space:nowrap;max-width:260px;overflow:hidden}
+.tb-w b{color:var(--at);font-weight:400}
+.dd{position:relative}.dd-b{padding:4px 10px;font-size:13px;color:var(--tx3);border-radius:3px;display:flex;align-items:center;gap:4px;transition:all .12s}
+.dd-b:hover,.dd-b.open{color:var(--tx1);background:var(--brd)}
+.dd-m{position:absolute;top:calc(100% + 4px);left:0;min-width:170px;background:var(--glass);backdrop-filter:blur(20px);border:1px solid var(--brd2);border-radius:var(--r);padding:4px;box-shadow:0 8px 30px rgba(0,0,0,.3);z-index:300;display:none;animation:ddI .25s cubic-bezier(.16,1,.3,1)}
+.dd-m.show{display:block}@keyframes ddI{from{opacity:0;transform:translateY(-6px)}to{opacity:1;transform:translateY(0)}}
+.dd-i{display:flex;align-items:center;gap:8px;padding:6px 10px;border-radius:5px;font-size:13px;color:var(--tx2);transition:all .12s;width:100%;text-align:left}
+.dd-i:hover{background:var(--brd);color:var(--tx1)}.dd-s{height:1px;background:var(--brd);margin:3px 6px}
+.tb-r{display:flex;align-items:center;gap:4px;margin-left:auto}
+.tb-clk{color:var(--tx3);font-size:13px;padding:0 8px;letter-spacing:1px;font-family:var(--fm2)}
+.ib{width:26px;height:26px;display:flex;align-items:center;justify-content:center;border-radius:4px;color:var(--tx3);font-size:12px;transition:all .12s}
+.ib:hover{color:var(--accent);background:var(--brd)}.ib:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+.tb-u{display:flex;align-items:center;gap:5px;padding:3px 10px;border-radius:14px;background:var(--brd);border:1px solid var(--brd);font-size:12px;color:var(--tx2);margin-left:4px}
+.tb-u:hover{border-color:var(--brd2)}
+.tb-av{width:18px;height:18px;border-radius:50%;background:var(--accent);display:flex;align-items:center;justify-content:center;font-size:9px;font-weight:700;color:var(--g0)}
+.ws{position:relative;width:100%;height:calc(100vh - var(--bar));overflow:hidden;z-index:1}
+.app{display:none;flex-direction:column;height:100%}.app.show{display:flex}
+/* Windows */
+.fw{position:absolute;display:flex;flex-direction:column;min-width:280px;min-height:180px;border:1px solid var(--brd);border-radius:var(--r);box-shadow:0 6px 30px rgba(0,0,0,.35);overflow:visible;backdrop-filter:blur(14px);z-index:10;animation:fwI .4s cubic-bezier(.16,1,.3,1)}
+@keyframes fwI{from{opacity:0;transform:scale(.92) translateY(8px)}to{opacity:1;transform:scale(1) translateY(0)}}
+.fw.foc{z-index:50;border-color:var(--brd2);box-shadow:0 10px 40px rgba(0,0,0,.45)}
+.fw.dim{opacity:.12;pointer-events:none;filter:blur(1.5px)}
+.fw.snap{transition:left .3s cubic-bezier(.16,1,.3,1),top .3s cubic-bezier(.16,1,.3,1),width .3s cubic-bezier(.16,1,.3,1),height .3s cubic-bezier(.16,1,.3,1)}
+.fw-t{height:30px;min-height:30px;display:flex;align-items:center;padding:0 10px;cursor:grab;user-select:none;border-bottom:1px solid var(--brd);background:var(--tb);gap:6px;border-radius:var(--r) var(--r) 0 0}
+.fw-t:active{cursor:grabbing}
+.fw-d{display:flex;gap:5px}.fw-dot{width:11px;height:11px;border-radius:50%;padding:0}
+.dot-r{background:var(--red)}.dot-y{background:var(--yel)}.dot-g{background:var(--accent)}
+.fw-tl{font-size:11px;letter-spacing:2px;text-transform:uppercase;color:var(--tx4);flex:1;text-align:center;pointer-events:none}
+.fw-b{flex:1;overflow:hidden;display:flex;flex-direction:column}.fw-in{flex:1;overflow-y:auto;padding:12px}
+.rh{position:absolute;z-index:2}.rh-n{top:-4px;left:10px;right:10px;height:8px;cursor:n-resize}.rh-s{bottom:-4px;left:10px;right:10px;height:8px;cursor:s-resize}.rh-w{left:-4px;top:10px;bottom:10px;width:8px;cursor:w-resize}.rh-e{right:-4px;top:10px;bottom:10px;width:8px;cursor:e-resize}.rh-nw{top:-4px;left:-4px;width:14px;height:14px;cursor:nw-resize}.rh-ne{top:-4px;right:-4px;width:14px;height:14px;cursor:ne-resize}.rh-sw{bottom:-4px;left:-4px;width:14px;height:14px;cursor:sw-resize}.rh-se{bottom:-4px;right:-4px;width:14px;height:14px;cursor:se-resize}
+.sg{position:absolute;background:var(--brd);border:1px dashed var(--brd2);z-index:999;pointer-events:none;border-radius:5px;display:none}
+/* Shared */
+.sl{font-size:11px;letter-spacing:2.5px;text-transform:uppercase;color:var(--tx4);margin:8px 0 6px;display:flex;align-items:center;gap:6px}.sl::after{content:'';flex:1;height:1px;background:var(--brd)}
+.btn{padding:6px 14px;border-radius:5px;border:1px solid var(--brd);background:var(--g3);color:var(--tx2);font-size:13px;transition:all .15s}.btn:hover{border-color:var(--brd2);color:var(--tx1)}.btn:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+.btn-a{background:var(--brd);border-color:var(--brdA);color:var(--accent)}.btn-a:hover{background:var(--brd2)}
+.btn-d{border-color:rgba(255,92,92,.3);color:var(--red)}.btn-s{padding:3px 10px;font-size:11px}
+.inp{width:100%;padding:7px 10px;background:var(--g2);border:1px solid var(--brd);border-radius:5px;color:var(--tx1);font-family:var(--fm);font-size:14px;outline:none;transition:border-color .15s}
+.inp:focus{border-color:var(--brdA)}.inp::placeholder{color:var(--tx4)}
+textarea.inp{resize:vertical;min-height:60px;line-height:1.6}
+.badge{font-size:11px;padding:1px 7px;border-radius:8px}.b-hi{background:rgba(255,92,92,.1);color:var(--red)}.b-md{background:rgba(255,200,87,.08);color:var(--yel)}.b-lo{background:var(--brd);color:var(--accent)}
+.tab-bar{display:flex;gap:1px;background:var(--g2);border-radius:5px;padding:2px;margin-bottom:8px}
+.tab{flex:1;padding:5px 8px;text-align:center;font-size:11px;border-radius:4px;color:var(--tx3);transition:all .2s}.tab.act{background:var(--brd);color:var(--accent)}
+.tc{display:none}.tc.act{display:block;animation:tcI .3s cubic-bezier(.16,1,.3,1)}@keyframes tcI{from{opacity:0;transform:translateY(4px)}to{opacity:1;transform:translateY(0)}}
+/* Tasks */
+.ti{display:flex;align-items:flex-start;gap:8px;padding:7px 10px;background:var(--g2);border-radius:5px;margin-bottom:3px;border:1px solid transparent;transition:all .1s}.ti:hover{border-color:var(--brd)}
+.tchk{width:15px;height:15px;min-width:15px;border-radius:50%;border:2px solid var(--tx4);margin-top:2px;padding:0;background:none;transition:all .15s}.tchk:hover{border-color:var(--accent)}.tchk.dn{background:var(--accent);border-color:var(--accent)}
+.ttxt{flex:1;font-size:14px;line-height:1.4}.ttxt.dn{text-decoration:line-through;color:var(--tx4)}
+.tmeta{display:flex;gap:8px;align-items:center;margin-top:3px;font-size:11px;color:var(--tx4);flex-wrap:wrap}
+.subs{margin-top:4px;padding-left:8px}.sub-i{display:flex;align-items:center;gap:6px;font-size:12px;color:var(--tx2);padding:2px 0}
+.sub-c{width:12px;height:12px;min-width:12px;border-radius:3px;border:1.5px solid var(--tx4);padding:0;background:none;transition:all .12s}.sub-c.dn{background:var(--accent);border-color:var(--accent)}
+/* Kanban */
+.kb-board{display:flex;gap:6px;height:100%;overflow-x:auto}
+.kb-col{min-width:160px;flex:1;background:var(--g2);border-radius:5px;padding:8px;display:flex;flex-direction:column;border:1px solid var(--brd)}
+.kb-h{display:flex;align-items:center;justify-content:space-between;margin-bottom:6px;padding-bottom:4px;border-bottom:1px solid var(--brd)}
+.kb-n{font-size:10px;letter-spacing:1.5px;text-transform:uppercase;color:var(--tx4)}
+.kb-cnt{background:var(--brd);color:var(--accent);width:18px;height:18px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:10px}
+.kb-cards{flex:1;display:flex;flex-direction:column;gap:3px;overflow-y:auto}
+.kb-cd{background:var(--g1);border:1px solid var(--brd);border-radius:5px;padding:7px 9px;cursor:grab;transition:all .15s;font-size:13px}.kb-cd:hover{border-color:var(--brd2);transform:translateY(-1px)}
+/* Notes */
+.nl{display:flex;flex-direction:column;gap:2px;max-height:160px;overflow-y:auto;margin-bottom:6px}
+.ni{padding:5px 8px;border-radius:4px;font-size:12px;color:var(--tx2);transition:all .12s;text-align:left;width:100%}.ni:hover{background:var(--brd)}.ni.act{background:var(--brd);color:var(--accent)}
+/* Planner */
+.pl-r{display:flex;gap:6px;margin-bottom:2px}.pl-t{width:50px;font-size:12px;color:var(--tx4);padding-top:4px;text-align:right;flex-shrink:0;font-family:var(--fm2)}
+.pl-s{flex:1;padding:5px 10px;background:var(--g2);border-radius:4px;border:1px solid transparent;font-size:13px;min-height:28px;color:var(--tx2);outline:none;transition:all .12s}
+.pl-s:focus{border-color:var(--brdA)}.pl-s.filled{border-left:2px solid var(--accent);color:var(--accent);background:var(--brd)}
+/* Calendar */
+.cal-g{display:grid;grid-template-columns:repeat(7,1fr);gap:2px}
+.cal-h{font-size:10px;color:var(--tx4);text-align:center;padding:6px 0;letter-spacing:1px}
+.cal-d{aspect-ratio:1;display:flex;align-items:center;justify-content:center;border-radius:4px;font-size:13px;color:var(--tx2);position:relative;transition:all .12s;background:none;border:none;padding:0;width:100%;font-family:var(--fm)}
+.cal-d:hover{background:var(--brd)}.cal-d.today{background:var(--brd2);color:var(--accent);font-weight:700}
+.cal-d.other{color:var(--tx4);opacity:.4}
+.cal-d.has-t::after{content:'';position:absolute;bottom:3px;width:4px;height:4px;background:var(--accent);border-radius:50%}
+/* Flashcards */
+.fc{perspective:800px;width:100%;height:150px;cursor:pointer;margin-bottom:8px}
+.fc-in{position:relative;width:100%;height:100%;transition:transform .5s cubic-bezier(.16,1,.3,1);transform-style:preserve-3d}
+.fc.flip .fc-in{transform:rotateY(180deg)}
+.fc-f{position:absolute;inset:0;backface-visibility:hidden;display:flex;align-items:center;justify-content:center;padding:16px;border-radius:var(--r);font-size:15px;text-align:center;line-height:1.5}
+.fc-fr{background:var(--g3);border:1px solid var(--brd)}.fc-bk{background:var(--brd);border:1px solid var(--brd2);color:var(--accent);transform:rotateY(180deg)}
+.fc-fl{font-size:9px;letter-spacing:2px;text-transform:uppercase;color:var(--tx4);position:absolute;top:6px;left:10px}
 .fc-rate{display:flex;justify-content:center;gap:6px;margin-top:6px}
-.fc-rb{
-  padding:5px 14px;border-radius:4px;border:none;
-  font-family:var(--fm);font-size:11px;
-  cursor:pointer;transition:all 0.15s;
-}
-.fc-ra{background:rgba(255,92,92,0.08);color:var(--red);border:1px solid rgba(255,92,92,0.15)}
-.fc-rh{background:rgba(255,200,87,0.08);color:var(--yellow);border:1px solid rgba(255,200,87,0.15)}
+.fc-rb{padding:5px 14px;border-radius:5px;font-size:11px;transition:all .15s}
+.fc-ra{background:rgba(255,92,92,.08);color:var(--red);border:1px solid rgba(255,92,92,.15)}
+.fc-rh{background:rgba(255,200,87,.08);color:var(--yel);border:1px solid rgba(255,200,87,.15)}
 .fc-rg{background:var(--brd);color:var(--accent);border:1px solid var(--brdA)}
-.fc-re{background:rgba(101,184,255,0.08);color:var(--blue);border:1px solid rgba(101,184,255,0.15)}
+.fc-re{background:rgba(101,184,255,.08);color:var(--blu);border:1px solid rgba(101,184,255,.15)}
 .fc-list{display:flex;flex-direction:column;gap:3px;max-height:140px;overflow-y:auto}
-.fc-li{display:flex;align-items:center;padding:4px 8px;background:var(--g2);border-radius:3px;font-size:12px;color:var(--tx2)}
+.fc-li{display:flex;align-items:center;padding:4px 8px;background:var(--g2);border-radius:4px;font-size:12px;color:var(--tx2)}
 .fc-li span:first-child{flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-.fc-del{color:var(--red);cursor:pointer;font-size:12px;margin-left:6px}
-
-/* ============================================================
-   EISENHOWER MATRIX — 2x2 grid of task quadrants
-   ============================================================ */
+/* Matrix */
 .mx-g{display:grid;grid-template-columns:1fr 1fr;grid-template-rows:1fr 1fr;gap:4px;height:100%}
-.mx-q{
-  background:var(--g2);border-radius:var(--rs);padding:8px;
-  display:flex;flex-direction:column;
-  border:1px solid var(--brd);overflow-y:auto;
-}
-.mx-ql{
-  font-size:10px;letter-spacing:2px;text-transform:uppercase;
-  margin-bottom:6px;display:flex;align-items:center;gap:4px;
-}
+.mx-q{background:var(--g2);border-radius:5px;padding:8px;display:flex;flex-direction:column;border:1px solid var(--brd);overflow-y:auto}
+.mx-ql{font-size:9px;letter-spacing:2px;text-transform:uppercase;margin-bottom:6px;display:flex;align-items:center;gap:4px}
 .mx-dt{width:5px;height:5px;border-radius:2px}
-.q1 .mx-dt{background:var(--red)}.q1 .mx-ql{color:var(--red)}
-.q2 .mx-dt{background:var(--yellow)}.q2 .mx-ql{color:var(--yellow)}
-.q3 .mx-dt{background:var(--blue)}.q3 .mx-ql{color:var(--blue)}
-.q4 .mx-dt{background:var(--tx4)}.q4 .mx-ql{color:var(--tx4)}
-.mx-i{
-  font-size:12px;padding:4px 6px;
-  background:var(--g1);border-radius:3px;
-  margin-bottom:3px;cursor:pointer;
-  border:1px solid transparent;
-}
-.mx-i:hover{border-color:var(--brd2)}
-
-/* ============================================================
-   ANALYTICS — stat cards + 4-week heatmap
-   ============================================================ */
+.q1 .mx-dt{background:var(--red)}.q1 .mx-ql{color:var(--red)}.q2 .mx-dt{background:var(--yel)}.q2 .mx-ql{color:var(--yel)}.q3 .mx-dt{background:var(--blu)}.q3 .mx-ql{color:var(--blu)}.q4 .mx-dt{background:var(--tx4)}.q4 .mx-ql{color:var(--tx4)}
+.mx-i{font-size:12px;padding:4px 6px;background:var(--g1);border-radius:4px;margin-bottom:3px;border:1px solid transparent;width:100%;text-align:left}.mx-i:hover{border-color:var(--brd2)}
+/* Analytics */
 .an-g{display:grid;grid-template-columns:1fr 1fr;gap:6px}
-.an-c{background:var(--g2);border-radius:var(--rs);padding:10px;border:1px solid var(--brd)}
-.an-c h4{font-size:10px;letter-spacing:2px;text-transform:uppercase;color:var(--tx4);margin-bottom:4px}
-.an-b{
-  font-size:28px;font-weight:800;font-family:var(--fd);
-  color:var(--accent);
-}
+.an-c{background:var(--g2);border-radius:5px;padding:10px;border:1px solid var(--brd)}
+.an-c h4{font-size:9px;letter-spacing:2px;text-transform:uppercase;color:var(--tx4);margin-bottom:4px}
+.an-b{font-size:28px;font-weight:800;color:var(--accent)}
 .hm{display:grid;grid-template-columns:repeat(7,1fr);gap:2px}
-.hm-c{aspect-ratio:1;border-radius:2px;background:var(--g1)}
-.hm-c.l1{background:var(--brd)}
-.hm-c.l2{background:var(--brd2)}
-.hm-c.l3{background:var(--brdA)}
-.hm-c.l4{background:var(--accent);opacity:0.6}
-
-/* ============================================================
-   VAULT — personal file storage
-   ============================================================ */
-.vault-list{display:flex;flex-direction:column;gap:3px}
-.vault-item{
-  display:flex;align-items:center;gap:8px;
-  padding:7px 10px;background:var(--g2);
-  border-radius:var(--rs);border:1px solid transparent;
-  transition:all 0.12s;cursor:pointer;font-size:13px;
-}
-.vault-item:hover{border-color:var(--brd2)}
-.vault-del{color:var(--red);cursor:pointer;font-size:12px;opacity:0;transition:opacity 0.12s;margin-left:auto}
-.vault-item:hover .vault-del{opacity:1}
-.vault-drop{
-  width:100%;padding:16px;
-  border:2px dashed var(--brd2);border-radius:var(--r);
-  text-align:center;cursor:pointer;
-  color:var(--tx3);font-size:13px;
-  transition:all 0.15s;margin-bottom:8px;
-}
-.vault-drop:hover{border-color:var(--accent);color:var(--accent)}
-
-/* PDF viewer window — uses native browser PDF viewer */
-.pdf-viewer{width:100%;height:100%;border:none;border-radius:var(--rs);background:#fff}
-
-/* ============================================================
-   SETTINGS — themes, colors, mode, profile
-   ============================================================ */
-.theme-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:4px;margin-bottom:8px}
-.theme-card{
-  padding:10px 4px;border-radius:var(--rs);
-  border:2px solid var(--brd);cursor:pointer;
-  text-align:center;transition:all 0.15s;font-size:11px;
-}
-.theme-card:hover{border-color:var(--brd2)}
-.theme-card.active{border-color:var(--accent)}
-.theme-preview{display:flex;gap:2px;justify-content:center;margin-bottom:3px}
-.theme-dot{width:10px;height:10px;border-radius:2px}
-.color-row{display:flex;align-items:center;gap:8px;margin-bottom:6px}
-.color-row label{font-size:12px;color:var(--tx2);flex:1}
-.color-row input[type="color"]{
-  width:32px;height:24px;
-  border:1px solid var(--brd);border-radius:3px;
-  background:var(--g2);cursor:pointer;padding:0;
-}
-.color-row .reset-btn{font-size:10px;padding:2px 6px}
-.alpha-row{display:flex;align-items:center;gap:8px;margin-bottom:8px}
-.alpha-row label{font-size:12px;color:var(--tx2);width:90px}
-.alpha-slider{
-  flex:1;height:4px;-webkit-appearance:none;
-  background:var(--g3);border-radius:2px;outline:none;
-}
-.alpha-slider::-webkit-slider-thumb{
-  -webkit-appearance:none;width:12px;height:12px;
-  border-radius:50%;background:var(--accent);cursor:pointer;
-}
-.alpha-val{font-size:11px;color:var(--tx3);width:36px;text-align:right;font-family:var(--fmono)}
-
-/* Keybind editor */
-.kb-editor{display:flex;flex-direction:column;gap:4px}
-.kb-edit-row{
-  display:flex;align-items:center;gap:8px;
-  padding:6px 8px;background:var(--g2);border-radius:4px;
-}
-.kb-edit-label{flex:1;font-size:12px;color:var(--tx2)}
-.kb-edit-input{
-  width:120px;padding:3px 8px;
-  background:var(--g1);border:1px solid var(--brd);
-  border-radius:3px;color:var(--accent);
-  font-family:var(--fmono);font-size:11px;
-  text-align:center;outline:none;
-}
-.kb-edit-input:focus{border-color:var(--brdA)}
-
-/* ============================================================
-   OVERLAYS — help, quick capture
-   ============================================================ */
-.overlay{
-  display:none;position:fixed;inset:0;
-  background:rgba(0,0,0,.55);backdrop-filter:blur(6px);
-  z-index:300;align-items:center;justify-content:center;
-}
-.overlay.show{display:flex}
-.overlay.top{align-items:flex-start;padding-top:16vh}
-.o-panel{
-  background:var(--glass);backdrop-filter:blur(20px);
-  border:1px solid var(--brd2);border-radius:var(--r);
-  padding:18px;width:440px;max-height:75vh;overflow-y:auto;
-  box-shadow:0 20px 60px rgba(0,0,0,.4);
-  animation:spawn 0.35s cubic-bezier(0.16,1,0.3,1);
-}
-.o-title{
-  font-family:var(--fd);font-size:16px;font-weight:700;
-  color:var(--accent);margin-bottom:14px;
-  text-align:center;letter-spacing:2px;
-}
-.kb-row{
-  display:flex;justify-content:space-between;
-  padding:5px 0;border-bottom:1px solid var(--brd);
-  font-size:12px;
-}
-.kb-key{
-  font-size:11px;color:var(--accent);
-  background:var(--g3);padding:2px 8px;border-radius:3px;
-  border:1px solid var(--brd);font-family:var(--fmono);
-}
-.kb-desc{color:var(--tx2)}
-
-/* ============================================================
-   LOGIN SCREEN — auth gate before app loads
-   ============================================================ */
-.login-screen{
-  position:fixed;inset:0;z-index:10000;
-  background:var(--g0);
-  display:flex;align-items:center;justify-content:center;
-  transition:opacity 0.5s,transform 0.5s;
-}
-.login-screen.out{opacity:0;transform:scale(1.05);pointer-events:none}
-.login-box{
-  width:340px;background:var(--g1);
-  border:1px solid var(--brd2);border-radius:var(--r);
-  padding:28px;text-align:center;
-  box-shadow:0 20px 80px rgba(0,0,0,.5);
-  animation:spawn 0.5s cubic-bezier(0.16,1,0.3,1);
-}
-.login-logo{font-family:var(--fm);font-size:40px;font-weight:700;color:var(--accent);letter-spacing:8px;margin-bottom:2px}
-.login-sub{font-size:11px;color:var(--tx3);letter-spacing:3px;margin-bottom:20px}
-.login-input{
-  width:100%;padding:9px 12px;
-  background:var(--g2);border:1px solid var(--brd);
-  border-radius:var(--rs);color:var(--tx1);
-  font-family:var(--fm);font-size:14px;
-  outline:none;margin-bottom:8px;
-}
-.login-input:focus{border-color:var(--brd2)}
-.login-input::placeholder{color:var(--tx4)}
-.login-btn{
-  width:100%;padding:10px;
-  background:var(--brd);border:1px solid var(--brdA);
-  border-radius:var(--rs);color:var(--accent);
-  font-family:var(--fm);font-size:14px;
-  cursor:pointer;transition:all 0.15s;margin-bottom:6px;
-}
-.login-btn:hover{background:var(--brd2)}
-.login-remember{display:flex;align-items:center;gap:6px;margin:6px 0 12px;font-size:12px;color:var(--tx3)}
-.login-remember input{accent-color:var(--accent)}
-.login-err{font-size:12px;color:var(--red);margin-bottom:6px;min-height:16px}
-.login-profiles{margin-top:12px;border-top:1px solid var(--brd);padding-top:10px}
-.login-profile-btn{
-  display:flex;align-items:center;gap:8px;width:100%;
-  padding:7px 10px;background:var(--g2);
-  border:1px solid var(--brd);border-radius:var(--rs);
-  color:var(--tx2);font-family:var(--fm);font-size:12px;
-  cursor:pointer;transition:all 0.12s;margin-bottom:3px;
-}
-.login-profile-btn:hover{border-color:var(--brd2);color:var(--accent)}
-.login-avatar{
-  width:22px;height:22px;border-radius:50%;
-  background:var(--accent);
-  display:flex;align-items:center;justify-content:center;
-  font-size:10px;font-weight:700;color:var(--g0);
-}
-
-/* Quick capture overlay */
-.cap-box{
-  width:440px;background:var(--glass);
-  backdrop-filter:blur(20px);border:1px solid var(--brd2);
-  border-radius:var(--r);overflow:hidden;
-  box-shadow:0 20px 60px rgba(0,0,0,.4);
-  animation:spawn 0.35s cubic-bezier(0.16,1,0.3,1);
-}
-.cap-in{
-  width:100%;padding:14px 16px;
-  background:none;border:none;
-  border-bottom:1px solid var(--brd);
-  color:var(--tx1);font-family:var(--fm);font-size:15px;
-  outline:none;
-}
-.cap-ft{display:flex;gap:4px;padding:8px 12px;align-items:center}
-.cap-t{
-  padding:3px 10px;border-radius:10px;font-size:11px;
-  cursor:pointer;border:1px solid var(--brd);
-  color:var(--tx4);background:none;
-  font-family:var(--fm);transition:all 0.1s;
-}
-.cap-t:hover{border-color:var(--brd2);color:var(--tx2)}
-.cap-t.act{border-color:var(--brdA);color:var(--accent);background:var(--brd)}
-.cap-h{margin-left:auto;font-size:10px;color:var(--tx4)}
-
-/* ============================================================
-   POMODORO — circular timer with session notes and log
-   ============================================================ */
+.hm-c{aspect-ratio:1;border-radius:2px;background:var(--g1)}.hm-c.l1{background:var(--brd)}.hm-c.l2{background:var(--brd2)}.hm-c.l3{background:var(--brdA)}.hm-c.l4{background:var(--accent);opacity:.5}
+/* Vault */
+.v-drop{width:100%;padding:16px;border:2px dashed var(--brd2);border-radius:var(--r);text-align:center;color:var(--tx3);font-size:13px;transition:all .15s;margin-bottom:8px}
+.v-drop:hover{border-color:var(--accent);color:var(--accent)}
+.v-item{display:flex;align-items:center;gap:8px;padding:7px 10px;background:var(--g2);border-radius:5px;border:1px solid transparent;margin-bottom:3px;font-size:13px;width:100%;text-align:left}.v-item:hover{border-color:var(--brd2)}
+.v-del{color:var(--red);font-size:12px;opacity:0;transition:opacity .12s;margin-left:auto}.v-item:hover .v-del{opacity:1}
+/* Settings */
+.th-g{display:grid;grid-template-columns:repeat(4,1fr);gap:4px;margin-bottom:8px}
+.th-c{padding:10px 4px;border-radius:5px;border:2px solid var(--brd);text-align:center;font-size:11px;transition:all .15s;width:100%}.th-c:hover{border-color:var(--brd2)}.th-c.act{border-color:var(--accent)}
+.cc{display:flex;align-items:center;gap:10px;margin-bottom:6px}.cc label{font-size:12px;color:var(--tx2);flex:1}
+.cc input[type=color]{width:32px;height:24px;border:1px solid var(--brd);border-radius:3px;background:var(--g2);cursor:pointer;padding:2px}
+.sc{display:flex;align-items:center;gap:10px;margin-bottom:8px}.sc label{font-size:12px;color:var(--tx2);width:90px}
+.sc input[type=range]{flex:1;height:4px;-webkit-appearance:none;background:var(--g3);border-radius:2px;outline:none}
+.sc input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:14px;height:14px;border-radius:50%;background:var(--accent);cursor:pointer}
+.sc .sv{font-size:11px;color:var(--tx3);width:40px;text-align:right;font-family:var(--fm2)}
+/* Terminal */
+.t-out{white-space:pre-wrap;word-break:break-all;line-height:1.5;color:var(--tx2);font-family:var(--fm2);font-size:14px}
+.t-out .c{color:var(--at)}.t-out .e{color:var(--red)}.t-out .i{color:var(--blu)}.t-out .w{color:var(--yel)}.t-out .s{color:var(--accent)}.t-out .d{color:var(--tx4)}.t-out .a{color:var(--accent);font-weight:600}
+.t-p{display:flex;align-items:center;margin-top:4px;font-family:var(--fm2)}.t-ps{color:var(--tp);white-space:nowrap;font-size:14px}
+.t-in{flex:1;background:none;border:none;outline:none;color:var(--tx1);font-family:var(--fm2);font-size:14px;caret-color:var(--accent)}
+/* Pomo */
 .po-w{display:flex;flex-direction:column;align-items:center;padding:6px 0}
-.po-rb{position:relative;width:150px;height:150px}
-.po-rb svg{width:150px;height:150px;transform:rotate(-90deg)}
-.po-bg{fill:none;stroke:var(--g3);stroke-width:4}
-.po-fg{
-  fill:none;stroke:var(--accent);stroke-width:4;
-  stroke-linecap:round;stroke-dasharray:421;stroke-dashoffset:0;
-  transition:stroke-dashoffset .8s linear;
-}
-.po-t{
-  position:absolute;top:50%;left:50%;
-  transform:translate(-50%,-55%);
-  font-size:32px;font-weight:700;
-  color:var(--tx1);cursor:pointer;
-  font-family:var(--fmono);
-}
-.po-t:hover{color:var(--accent)}
-.po-ph{
-  position:absolute;top:62%;left:50%;transform:translateX(-50%);
-  font-size:10px;letter-spacing:3px;text-transform:uppercase;
-  color:var(--tx3);
-}
-.po-btns{display:flex;gap:6px;margin-top:8px}
-.po-modes{display:flex;gap:2px;margin-top:6px;background:var(--g2);border-radius:4px;padding:2px}
-.po-mb{
-  padding:4px 10px;border:none;background:none;
-  font-family:var(--fm);font-size:11px;
-  color:var(--tx3);cursor:pointer;border-radius:3px;
-}
-.po-mb.act{background:var(--brd);color:var(--accent)}
-.po-dots{display:flex;gap:4px;margin-top:6px}
-.po-d{width:6px;height:6px;border-radius:50%;background:var(--g3);border:1px solid var(--tx4)}
-.po-d.dn{background:var(--accent);border-color:var(--accent)}
-.po-note{
-  width:100%;margin-top:6px;padding:6px 8px;
-  background:var(--g2);border:1px solid var(--brd);
-  border-radius:4px;color:var(--tx1);
-  font-family:var(--fm);font-size:12px;
-  outline:none;resize:none;min-height:32px;
-}
-.po-note::placeholder{color:var(--tx4)}
-.po-note:focus{border-color:var(--brdA)}
-.po-log{display:flex;flex-direction:column;gap:2px;margin-top:4px;max-height:90px;overflow-y:auto}
+.po-rb{position:relative;width:160px;height:160px}.po-rb svg{width:160px;height:160px;transform:rotate(-90deg)}
+.po-bg{fill:none;stroke:var(--g3);stroke-width:4}.po-fg{fill:none;stroke:var(--accent);stroke-width:4;stroke-linecap:round;stroke-dasharray:440;stroke-dashoffset:0;transition:stroke-dashoffset .8s linear}
+.po-tm{position:absolute;top:50%;left:50%;transform:translate(-50%,-55%);font-size:32px;font-weight:700;font-family:var(--fm2)}.po-tm:hover{color:var(--accent)}
+.po-ph{position:absolute;top:63%;left:50%;transform:translateX(-50%);font-size:10px;letter-spacing:3px;text-transform:uppercase;color:var(--tx3)}
+.po-log{display:flex;flex-direction:column;gap:2px;max-height:90px;overflow-y:auto;margin-top:4px}
 .po-le{display:flex;justify-content:space-between;padding:3px 6px;background:var(--g2);border-radius:3px;font-size:11px}
-.po-edit{
-  position:absolute;inset:0;background:var(--glass);
-  backdrop-filter:blur(12px);display:none;
-  flex-direction:column;align-items:center;justify-content:center;
-  gap:8px;z-index:5;border-radius:var(--r);
-}
-.po-edit.show{display:flex}
+.po-edit{position:absolute;inset:0;background:var(--glass);backdrop-filter:blur(12px);display:none;flex-direction:column;align-items:center;justify-content:center;gap:8px;z-index:5;border-radius:var(--r)}.po-edit.show{display:flex}
+/* Login */
+.ls{position:fixed;inset:0;z-index:10000;background:var(--g0);display:flex;align-items:center;justify-content:center;transition:opacity .5s,transform .5s}
+.ls.out{opacity:0;transform:scale(1.05);pointer-events:none}
+.lb{width:360px;background:var(--g1);border:1px solid var(--brd2);border-radius:var(--r);padding:28px;text-align:center;box-shadow:0 20px 80px rgba(0,0,0,.5);animation:fwI .5s cubic-bezier(.16,1,.3,1)}
+.ll{font-size:40px;font-weight:700;color:var(--accent);letter-spacing:8px;margin-bottom:2px}
+.lsub{font-size:11px;color:var(--tx3);letter-spacing:3px;margin-bottom:20px}
+.l-btn{width:100%;padding:10px;background:var(--brd);border:1px solid var(--brdA);border-radius:5px;color:var(--accent);font-size:14px;margin-bottom:6px;transition:all .15s}.l-btn:hover{background:var(--brd2)}
+.l-prof{margin-top:12px;border-top:1px solid var(--brd);padding-top:10px}
+.l-pb{display:flex;align-items:center;gap:8px;width:100%;padding:7px 10px;background:var(--g2);border:1px solid var(--brd);border-radius:5px;color:var(--tx2);font-size:12px;margin-bottom:3px;text-align:left;transition:all .12s}.l-pb:hover{border-color:var(--brd2);color:var(--accent)}
+/* Overlays */
+.ov{position:fixed;inset:0;background:rgba(0,0,0,.55);backdrop-filter:blur(6px);z-index:300;display:flex;align-items:center;justify-content:center}
+.ov.top{align-items:flex-start;padding-top:16vh}
+.ov-p{background:var(--glass);backdrop-filter:blur(20px);border:1px solid var(--brd2);border-radius:var(--r);padding:18px;width:460px;max-height:75vh;overflow-y:auto;box-shadow:0 20px 60px rgba(0,0,0,.4);animation:fwI .35s cubic-bezier(.16,1,.3,1)}
+.ov-t{font-size:16px;font-weight:700;color:var(--accent);margin-bottom:14px;text-align:center;letter-spacing:2px}
+.kb-r{display:flex;justify-content:space-between;padding:5px 0;border-bottom:1px solid var(--brd);font-size:12px}
+.kb-k{font-size:11px;color:var(--accent);background:var(--g3);padding:2px 8px;border-radius:4px;border:1px solid var(--brd);font-family:var(--fm2)}.kb-d{color:var(--tx2)}
+.cap-box{width:460px;background:var(--glass);backdrop-filter:blur(20px);border:1px solid var(--brd2);border-radius:var(--r);overflow:hidden;box-shadow:0 20px 60px rgba(0,0,0,.4);animation:fwI .35s cubic-bezier(.16,1,.3,1)}
+.cap-in{width:100%;padding:14px 16px;background:none;border:none;border-bottom:1px solid var(--brd);color:var(--tx1);font-family:var(--fm);font-size:15px;outline:none}.cap-in::placeholder{color:var(--tx4)}
+.cap-ft{display:flex;gap:4px;padding:8px 12px;align-items:center}
+.cap-t{padding:4px 12px;border-radius:12px;font-size:11px;border:1px solid var(--brd);color:var(--tx4);transition:all .1s}.cap-t:hover{border-color:var(--brd2);color:var(--tx2)}.cap-t.act{border-color:var(--brdA);color:var(--accent);background:var(--brd)}
+.cap-h{margin-left:auto;font-size:10px;color:var(--tx4)}
+.pdf-v{width:100%;height:100%;border:none;border-radius:5px;background:#fff}
+.hf{position:fixed;top:var(--bar);right:0;z-index:190;width:26px;height:26px;display:flex;align-items:center;justify-content:center;background:var(--brd);border:1px solid var(--brd);border-radius:0 0 0 5px;color:var(--accent);font-size:14px;font-weight:700}
 </style>
 </head>
 <body>
-<canvas id="matrix"></canvas>
-
-<!-- ===== LOGIN SCREEN (shown before app loads) ===== -->
-<div class="login-screen" id="LS">
-  <div class="login-box">
-    <div class="login-logo">NEPT</div>
-    <div class="login-sub">WORKSPACE</div>
-    <div class="login-err" id="lErr"></div>
-    <input class="login-input" id="lU" placeholder="Username" onkeydown="if(event.key==='Enter')doLogin()">
-    <input class="login-input" id="lP" type="password" placeholder="Password" onkeydown="if(event.key==='Enter')doLogin()">
-    <div class="login-remember">
-      <input type="checkbox" id="lR" checked>
-      <label for="lR">Stay signed in</label>
-    </div>
-    <button class="login-btn" onclick="doLogin()">Sign In</button>
-    <button class="login-btn" style="background:none;border-color:var(--brd)" onclick="doCreate()">Create Profile</button>
-    <div class="login-profiles" id="lProfiles"></div>
-  </div>
+<canvas id="mx"></canvas>
+<div class="ls" id="LS"><div class="lb"><div class="ll">NEPT</div><div class="lsub">WORKSPACE</div><div id="lErr" style="font-size:12px;color:var(--red);margin-bottom:6px;min-height:14px"></div><input class="inp" id="lU" placeholder="Username" style="margin-bottom:8px" onkeydown="if(event.key==='Enter')doLogin()"><input class="inp" id="lP" type="password" placeholder="Password" style="margin-bottom:8px" onkeydown="if(event.key==='Enter')doLogin()"><label style="display:flex;align-items:center;gap:6px;margin-bottom:14px;font-size:12px;color:var(--tx3);cursor:pointer"><input type="checkbox" id="lR" checked style="accent-color:var(--accent)">Stay signed in</label><button class="l-btn" onclick="doLogin()">Sign In</button><button class="l-btn" style="background:none;border-color:var(--brd)" onclick="doCreate()">Create Profile</button><div class="l-prof" id="lProf"></div></div></div>
+<div class="app" id="app">
+<div class="taskbar"><div class="tb-logo"><div class="tb-lg">N</div><span class="tb-ln">NEPT</span></div><div class="tb-w" id="tbW"></div>
+<div class="dd"><button class="dd-b" onclick="tDD(this)">System ▾</button><div class="dd-m"><button class="dd-i" onclick="oW('settings');cDD()">⚙ Settings</button><button class="dd-i" onclick="oW('vault');cDD()">🗄 Vault</button><div class="dd-s"></div><button class="dd-i" onclick="toggleMode();cDD()" id="modeBtn">☀ Light Mode</button><div class="dd-s"></div><button class="dd-i" onclick="signOut();cDD()">⏻ Sign Out</button></div></div>
+<div class="dd"><button class="dd-b" onclick="tDD(this)">Workspace ▾</button><div class="dd-m"><button class="dd-i" onclick="oW('tasks');cDD()">☐ Tasks</button><button class="dd-i" onclick="oW('matrix');cDD()">◫ Matrix</button><button class="dd-i" onclick="oW('kanban');cDD()">▦ Kanban</button><button class="dd-i" onclick="oW('planner');cDD()">▤ Planner</button><button class="dd-i" onclick="oW('calendar');cDD()">📅 Calendar</button></div></div>
+<div class="dd"><button class="dd-b" onclick="tDD(this)">Create ▾</button><div class="dd-m"><button class="dd-i" onclick="oW('notes');cDD()">✎ Notes</button><button class="dd-i" onclick="oW('flashcards');cDD()">◇ Cards</button><button class="dd-i" onclick="oW('scratchpad');cDD()">▧ Scratch</button></div></div>
+<div class="dd"><button class="dd-b" onclick="tDD(this)">Tools ▾</button><div class="dd-m"><button class="dd-i" onclick="oW('pomodoro');cDD()">◉ Pomodoro</button><button class="dd-i" onclick="oW('analytics');cDD()">◆ Analytics</button><button class="dd-i" onclick="oW('terminal');cDD()">▸ Terminal</button><button class="dd-i" onclick="oW('browser');cDD()">🌐 Browser</button></div></div>
+<div class="tb-r"><span class="tb-clk" id="clk">00:00</span><button class="ib" onclick="openCap()">⚡</button><button class="ib" id="fBtn" onclick="toggleFocus()">◎</button><button class="tb-u" id="tbU" onclick="signOut()"></button></div>
 </div>
-
-<!-- ===== MAIN APP (shown after login) ===== -->
-<div class="app-wrap" id="app">
-  <div class="taskbar">
-    <div class="tb-logo"><div class="tb-g">N</div><span class="tb-n">NEPT</span></div>
-    <div class="tb-welcome" id="tbW"></div>
-
-    <!-- Grouped dropdown menus -->
-    <div class="dd-wrap">
-      <button class="dd-btn" onclick="toggleDD(this)">System <span class="dd-arrow">▾</span></button>
-      <div class="dd-menu">
-        <div class="dd-item" onclick="openW('settings');closeAllDD()"><span class="dd-ico">⚙</span>Settings</div>
-        <div class="dd-item" onclick="openW('vault');closeAllDD()"><span class="dd-ico">🗄</span>Vault</div>
-        <div class="dd-sep"></div>
-        <div class="dd-item" onclick="toggleMode();closeAllDD()"><span class="dd-ico" id="mIco">☀</span><span id="mTxt">Light Mode</span></div>
-        <div class="dd-sep"></div>
-        <div class="dd-item" onclick="signOut();closeAllDD()"><span class="dd-ico">⏻</span>Sign Out</div>
-      </div>
-    </div>
-    <div class="dd-wrap">
-      <button class="dd-btn" onclick="toggleDD(this)">Workspace <span class="dd-arrow">▾</span></button>
-      <div class="dd-menu">
-        <div class="dd-item" onclick="openW('tasks');closeAllDD()"><span class="dd-ico">☐</span>Tasks</div>
-        <div class="dd-item" onclick="openW('matrix');closeAllDD()"><span class="dd-ico">◫</span>Matrix</div>
-        <div class="dd-item" onclick="openW('kanban');closeAllDD()"><span class="dd-ico">▦</span>Kanban</div>
-        <div class="dd-item" onclick="openW('planner');closeAllDD()"><span class="dd-ico">▤</span>Planner</div>
-      </div>
-    </div>
-    <div class="dd-wrap">
-      <button class="dd-btn" onclick="toggleDD(this)">Create <span class="dd-arrow">▾</span></button>
-      <div class="dd-menu">
-        <div class="dd-item" onclick="openW('notes');closeAllDD()"><span class="dd-ico">✎</span>Notes</div>
-        <div class="dd-item" onclick="openW('flashcards');closeAllDD()"><span class="dd-ico">◇</span>Cards</div>
-        <div class="dd-item" onclick="openW('scratchpad');closeAllDD()"><span class="dd-ico">▧</span>Scratch</div>
-      </div>
-    </div>
-    <div class="dd-wrap">
-      <button class="dd-btn" onclick="toggleDD(this)">Tools <span class="dd-arrow">▾</span></button>
-      <div class="dd-menu">
-        <div class="dd-item" onclick="openW('pomodoro');closeAllDD()"><span class="dd-ico">◉</span>Pomodoro</div>
-        <div class="dd-item" onclick="openW('analytics');closeAllDD()"><span class="dd-ico">◆</span>Analytics</div>
-        <div class="dd-item" onclick="openW('terminal');closeAllDD()"><span class="dd-ico">▸</span>Terminal</div>
-      </div>
-    </div>
-
-    <div class="tb-right">
-      <span class="tb-clk" id="clk">00:00</span>
-      <button class="tb-a" title="Quick capture" onclick="openCap()">⚡</button>
-      <button class="tb-a" title="Focus mode" id="fBtn" onclick="toggleFocus()">◎</button>
-      <div class="tb-user" id="tbU" onclick="signOut()"></div>
-    </div>
-  </div>
-  <div class="help-float" onclick="toggleHelp()">?</div>
-  <div class="workspace" id="ws">
-    <div class="snap-guide" id="snapG"></div>
-  </div>
+<button class="hf" onclick="toggleHelp()">?</button>
+<div class="ws" id="ws"><div class="sg" id="snapG"></div></div>
 </div>
-
-<!-- ===== HELP OVERLAY (shown on ? or help button) ===== -->
-<div class="overlay" id="helpOv" onclick="if(event.target===this)toggleHelp()">
-  <div class="o-panel">
-    <div class="o-title">COMMANDS</div>
-    <div id="helpContent"></div>
-  </div>
-</div>
-
-<!-- ===== QUICK CAPTURE OVERLAY ===== -->
-<div class="overlay top" id="capOv" onclick="if(event.target===this)closeCap()">
-  <div class="cap-box">
-    <input class="cap-in" id="capIn" placeholder="Quick capture..." onkeydown="if(event.key==='Enter')submitCap()">
-    <div class="cap-ft">
-      <button class="cap-t act" onclick="setCapT('task',this)">Task</button>
-      <button class="cap-t" onclick="setCapT('note',this)">Note</button>
-      <button class="cap-t" onclick="setCapT('kanban',this)">Kanban</button>
-      <button class="cap-t" onclick="setCapT('card',this)">Card</button>
-      <span class="cap-h">Enter ↵ · Esc</span>
-    </div>
-  </div>
-</div>
-
-<!-- Hidden file inputs -->
+<div class="ov" id="helpOv" style="display:none" onclick="if(event.target===this)toggleHelp()"><div class="ov-p"><div class="ov-t">NEPT Commands</div><div id="helpC"></div></div></div>
+<div class="ov top" id="capOv" style="display:none" onclick="if(event.target===this)closeCap()"><div class="cap-box"><input class="cap-in" id="capIn" placeholder="Quick capture..." onkeydown="if(event.key==='Enter')submitCap()"><div class="cap-ft"><button class="cap-t act" onclick="setCapT('task',this)">Task</button><button class="cap-t" onclick="setCapT('note',this)">Note</button><button class="cap-t" onclick="setCapT('kanban',this)">Kanban</button><button class="cap-t" onclick="setCapT('card',this)">Card</button><span class="cap-h">Enter ↵ · Esc</span></div></div></div>
 <input type="file" id="fileIn" style="display:none" onchange="handleFile(event)">
 <input type="file" id="cardFileIn" style="display:none" accept=".json,.csv,.txt" onchange="handleCardFile(event)">
 <input type="file" id="bgFileIn" style="display:none" accept="image/png,image/jpeg,image/webp" onchange="handleBgFile(event)">
 <input type="file" id="vaultFileIn" style="display:none" multiple onchange="handleVaultFiles(event)">
+<input type="file" id="icsFileIn" style="display:none" accept=".ics,.ical" onchange="handleICSFile(event)">
 
 <script>
-/* ============================================================
-   GREETING POOL — randomized welcome in different languages
-   ============================================================ */
-const GREETS = [
-  'Welcome back', 'Salutations', 'Bienvenue', 'Willkommen',
-  'Bienvenido', 'Bentornato', 'Välkommen', 'いらっしゃい',
-  'Bem-vindo', 'Aloha', 'Hey there', 'Hola', 'Bonjour',
-  'こんにちは', 'Hej', 'Olá', 'Merhaba', 'Ahoj'
-];
-function randomGreeting(name){
-  return GREETS[Math.floor(Math.random() * GREETS.length)] + ', <b>' + name + '</b>';
-}
+// ═══ I kept this file long but readable. Every section is labeled. ═══
 
-/* ============================================================
-   PROFILE STORAGE — each user gets their own saved state
-   ============================================================ */
-function getProfiles(){
-  return JSON.parse(localStorage.getItem('nept_profiles') || '{}');
-}
-function saveProfiles(p){
-  localStorage.setItem('nept_profiles', JSON.stringify(p));
-}
-let CU = null; // current user
+// --- GREETINGS (randomized on each login) ---
+const GR=['Welcome back','Salutations','Bienvenue','Willkommen','Bienvenido','Bentornato','Välkommen','いらっしゃい','Bem-vindo','Aloha','Hey there','Hola','Bonjour','こんにちは','Hej','Merhaba'];
+const rg=n=>GR[Math.floor(Math.random()*GR.length)]+', <b>'+n+'</b>';
 
-function showLogin(){
-  document.getElementById('LS').classList.remove('out');
-  document.getElementById('app').classList.remove('show');
+// --- IndexedDB (replaces localStorage — much bigger quota, async) ---
+let db;const DBO=indexedDB.open('nept',1);
+DBO.onupgradeneeded=e=>{const d=e.target.result;if(!d.objectStoreNames.contains('profiles'))d.createObjectStore('profiles',{keyPath:'username'});if(!d.objectStoreNames.contains('prefs'))d.createObjectStore('prefs',{keyPath:'key'})};
+DBO.onsuccess=e=>{db=e.target.result;showLogin()};
+DBO.onerror=()=>{console.error('IndexedDB failed, falling back');showLogin()};
 
-  // List existing profiles as quick-login buttons
-  const profiles = getProfiles();
-  const profileList = document.getElementById('lProfiles');
-  const names = Object.keys(profiles);
-  profileList.innerHTML = names.length
-    ? names.map(n => `<button class="login-profile-btn" onclick="quickLogin('${n}')"><div class="login-avatar">${n[0].toUpperCase()}</div>${n}</button>`).join('')
-    : '';
+function idbGet(store,key){return new Promise((res,rej)=>{if(!db)return res(null);const tx=db.transaction(store,'readonly');const r=tx.objectStore(store).get(key);r.onsuccess=()=>res(r.result);r.onerror=()=>res(null)})}
+function idbPut(store,val){return new Promise((res,rej)=>{if(!db)return res();const tx=db.transaction(store,'readwrite');tx.objectStore(store).put(val);tx.oncomplete=()=>res();tx.onerror=()=>res()})}
+function idbDel(store,key){return new Promise(res=>{if(!db)return res();const tx=db.transaction(store,'readwrite');tx.objectStore(store).delete(key);tx.oncomplete=()=>res()})}
+function idbAll(store){return new Promise(res=>{if(!db)return res([]);const tx=db.transaction(store,'readonly');const r=tx.objectStore(store).getAll();r.onsuccess=()=>res(r.result||[]);r.onerror=()=>res([])})}
 
-  // If "stay signed in" was checked last time, auto-login
-  const autoUser = localStorage.getItem('nept_auto');
-  if (autoUser && profiles[autoUser]) quickLogin(autoUser);
-}
+// --- STATE ---
+let CU=null,S=null;
+function freshS(){return{tasks:[],kanban:{backlog:[],todo:[],doing:[],done:[]},notes:[],curNote:0,planner:{},pomoSessions:0,pomoTotalMin:0,tasksDone:0,pomoLog:[],pomoTimes:{focus:25,short:5,long:15},heatmap:Array(28).fill(0),scratchpad:'',flashcards:[],decks:['General'],fcIdx:0,fcDeck:'all',theme:'matrix',mode:'dark',colors:{accent:'#87FF65',accentText:'#87FF65',mainText:'#e8e8e8',background:'#0a0a0a',titlebar:'#171717',termPrompt:'#87FF65'},bgImage:null,vault:[],winAlpha:90,uiScale:100,keybinds:{capture:'Ctrl+Space',focus:'Ctrl+F',help:'?'},calEvents:[],gcalUrl:''}}
+function migrateS(s){const d=freshS();const r={...d,...s};if(!r.colors)r.colors=d.colors;else r.colors={...d.colors,...r.colors};if(!r.keybinds)r.keybinds=d.keybinds;if(!r.decks)r.decks=['General'];if(r.uiScale===undefined)r.uiScale=100;if(!r.kanban)r.kanban=d.kanban;if(!r.calEvents)r.calEvents=[];if(!r.gcalUrl)r.gcalUrl='';r.flashcards?.forEach(c=>{if(!c.deck)c.deck='General'});r.tasks?.forEach(t=>{if(!t.subtasks)t.subtasks=[];if(!t.due)t.due=null;if(!t.estimate)t.estimate=null});return r}
+async function save(){if(!CU)return;await idbPut('profiles',{username:CU,data:S})}
 
-function doLogin(){
-  const user = document.getElementById('lU').value.trim();
-  const pass = document.getElementById('lP').value;
-  if (!user){ document.getElementById('lErr').textContent = 'Enter a username'; return; }
-  const profiles = getProfiles();
-  if (!profiles[user]){ document.getElementById('lErr').textContent = 'Profile not found. Use Create.'; return; }
-  if (profiles[user].pw && profiles[user].pw !== pass){ document.getElementById('lErr').textContent = 'Wrong password'; return; }
-  enter(user);
-}
+// --- AUTH ---
+async function showLogin(){document.getElementById('LS').classList.remove('out');document.getElementById('app').classList.remove('show');const all=await idbAll('profiles');const pp=document.getElementById('lProf');pp.innerHTML=all.map(p=>`<button class="l-pb" onclick="qLogin('${p.username}')"><span style="width:20px;height:20px;border-radius:50%;background:var(--accent);display:flex;align-items:center;justify-content:center;font-size:9px;font-weight:700;color:var(--g0)">${p.username[0].toUpperCase()}</span>${p.username}</button>`).join('');const auto=await idbGet('prefs','autoLogin');if(auto?.value){const p=await idbGet('profiles',auto.value);if(p)enter(auto.value,p.data)}}
+async function doLogin(){const u=document.getElementById('lU').value.trim(),pw=document.getElementById('lP').value;if(!u)return void(document.getElementById('lErr').textContent='Enter username');const p=await idbGet('profiles',u);if(!p)return void(document.getElementById('lErr').textContent='Not found. Use Create.');if(p.pw&&p.pw!==pw)return void(document.getElementById('lErr').textContent='Wrong password');enter(u,p.data)}
+async function doCreate(){const u=document.getElementById('lU').value.trim(),pw=document.getElementById('lP').value;if(!u)return void(document.getElementById('lErr').textContent='Enter username');const p=await idbGet('profiles',u);if(p)return void(document.getElementById('lErr').textContent='Already exists.');await idbPut('profiles',{username:u,pw,data:null});enter(u,null)}
+async function qLogin(u){const p=await idbGet('profiles',u);if(p)enter(u,p.data)}
+async function enter(u,data){CU=u;S=data?migrateS(data):freshS();if(document.getElementById('lR')?.checked)await idbPut('prefs',{key:'autoLogin',value:u});document.getElementById('LS').classList.add('out');setTimeout(()=>{document.getElementById('app').classList.add('show');initApp()},400)}
+async function signOut(){await save();await idbDel('prefs','autoLogin');CU=null;document.querySelectorAll('.fw').forEach(e=>e.remove());showLogin()}
 
-function doCreate(){
-  const user = document.getElementById('lU').value.trim();
-  const pass = document.getElementById('lP').value;
-  if (!user){ document.getElementById('lErr').textContent = 'Enter a username'; return; }
-  const profiles = getProfiles();
-  if (profiles[user]){ document.getElementById('lErr').textContent = 'Already exists.'; return; }
-  profiles[user] = { pw: pass, data: null };
-  saveProfiles(profiles);
-  enter(user);
-}
+// --- MATRIX RAIN ---
+(()=>{const c=document.getElementById('mx'),x=c.getContext('2d');let w,h,co,dr;function rs(){w=c.width=innerWidth;h=c.height=innerHeight;co=Math.floor(w/14);dr=Array(co).fill(1)}rs();addEventListener('resize',rs);const ch='01アイウエオカキク';(function d(){x.fillStyle=S?.mode==='light'?'rgba(244,244,242,.08)':'rgba(10,10,10,.05)';x.fillRect(0,0,w,h);x.fillStyle=getComputedStyle(document.documentElement).getPropertyValue('--accent').trim()||'#87FF65';x.font='12px Share Tech Mono';for(let i=0;i<co;i++){x.fillText(ch[Math.floor(Math.random()*ch.length)],i*14,dr[i]*14);if(dr[i]*14>h&&Math.random()>.975)dr[i]=0;dr[i]++}setTimeout(d,50)})()})();
 
-function quickLogin(user){ enter(user); }
-
-function enter(user){
-  CU = user;
-  const profiles = getProfiles();
-  S = profiles[user]?.data || freshState();
-
-  /* ── STATE MIGRATION ──
-     Old profiles from earlier versions won't have newer fields.
-     We patch them in here so nothing crashes on load. */
-  const defaults = freshState();
-  if (!S.colors) S.colors = defaults.colors;
-  else {
-    // Fill in any missing color keys
-    for (const k of Object.keys(defaults.colors)){
-      if (!S.colors[k]) S.colors[k] = defaults.colors[k];
-    }
-  }
-  if (!S.keybinds) S.keybinds = defaults.keybinds;
-  if (!S.vault) S.vault = [];
-  if (S.winAlpha === undefined) S.winAlpha = 90;
-  if (!S.decks) S.decks = ['General'];
-  // Ensure every flashcard has a deck field
-  S.flashcards.forEach(c => { if (!c.deck) c.deck = 'General'; });
-
-  // Remember login preference
-  if (document.getElementById('lR')?.checked){
-    localStorage.setItem('nept_auto', user);
-  }
-  document.getElementById('LS').classList.add('out');
-  setTimeout(() => {
-    document.getElementById('app').classList.add('show');
-    initApp();
-  }, 400);
-}
-
-function signOut(){
-  saveUserData();
-  localStorage.removeItem('nept_auto');
-  CU = null;
-  document.querySelectorAll('.fw').forEach(e => e.remove());
-  showLogin();
-}
-
-function saveUserData(){
-  if (!CU) return;
-  const profiles = getProfiles();
-  if (!profiles[CU]) profiles[CU] = { pw: '' };
-  profiles[CU].data = S;
-  saveProfiles(profiles);
-}
-
-/* Fresh state for a brand-new profile */
-function freshState(){
-  return {
-    tasks: [],
-    kanban: { backlog: [], todo: [], doing: [], done: [] },
-    notes: [],
-    curNote: 0,
-    planner: {},
-    pomoSessions: 0,
-    pomoTotalMin: 0,
-    tasksDone: 0,
-    pomoLog: [],
-    pomoTimes: { focus: 25, short: 5, long: 15 },
-    heatmap: Array(28).fill(0),
-    scratchpad: '',
-    flashcards: [],
-    decks: ['General'],
-    fcIdx: 0,
-    fcDeck: 'all',  // which deck is currently being studied
-    theme: 'matrix',
-    mode: 'dark',
-    // Full color customization — each can be overridden per-user
-    colors: {
-      accent: '#87FF65',       // brand / borders / glows
-      accentText: '#87FF65',   // tinted highlights
-      mainText: '#e8e8e8',     // body copy
-      background: '#0a0a0a',   // panels
-      titlebar: '#161616',     // window title bars
-      termPrompt: '#87FF65'    // terminal prompt char
-    },
-    bgImage: null,
-    vault: [],
-    winAlpha: 90,
-    keybinds: {
-      capture: 'Ctrl+Space',
-      focus: 'Ctrl+F',
-      help: '?'
-    }
-  };
-}
-let S = freshState();
-const save = () => saveUserData();
-
-/* ============================================================
-   MATRIX RAIN — canvas-based falling characters in the bg
-   Color reads from --accent CSS var so it follows themes
-   ============================================================ */
-(() => {
-  const canvas = document.getElementById('matrix');
-  const ctx = canvas.getContext('2d');
-  let w, h, cols, drops;
-
-  function resize(){
-    w = canvas.width = innerWidth;
-    h = canvas.height = innerHeight;
-    cols = Math.floor(w / 14);
-    drops = Array(cols).fill(1);
-  }
-  resize();
-  addEventListener('resize', resize);
-
-  const chars = '01アイウエオカキク';
-  (function draw(){
-    // Fade previous frame
-    ctx.fillStyle = S?.mode === 'light' ? 'rgba(245,245,243,0.08)' : 'rgba(10,10,10,0.05)';
-    ctx.fillRect(0, 0, w, h);
-    // Draw new characters in current accent
-    ctx.fillStyle = getComputedStyle(document.documentElement).getPropertyValue('--accent').trim() || '#87FF65';
-    ctx.font = '12px Share Tech Mono';
-    for (let i = 0; i < cols; i++){
-      const c = chars[Math.floor(Math.random() * chars.length)];
-      ctx.fillText(c, i * 14, drops[i] * 14);
-      if (drops[i] * 14 > h && Math.random() > 0.975) drops[i] = 0;
-      drops[i]++;
-    }
-    setTimeout(draw, 50);
-  })();
-})();
-
-/* ============================================================
-   THEMES — preset accent colors. Each one is just a name + accent.
-   applyTheme() derives borders and glows from accent dynamically.
-   ============================================================ */
-const THEMES = {
-  matrix: { name: 'Matrix',  accent: '#87FF65' },
-  cyber:  { name: 'Cyber',   accent: '#65d4ff' },
-  ember:  { name: 'Ember',   accent: '#ff6b4a' },
-  vapor:  { name: 'Vapor',   accent: '#c87fff' },
-  mono:   { name: 'Mono',    accent: '#aaaaaa' },
-  gold:   { name: 'Gold',    accent: '#ffc857' },
-  ocean:  { name: 'Ocean',   accent: '#4ac2c8' },
-  rose:   { name: 'Rose',    accent: '#ff6b8a' }
-};
-
-/**
- * Apply a named theme, or 'custom' to use S.colors directly.
- * This rebuilds all the CSS variables that control visual style.
- */
+// --- THEMES ---
+const TH={matrix:{n:'Matrix',a:'#87FF65'},cyber:{n:'Cyber',a:'#65d4ff'},ember:{n:'Ember',a:'#ff6b4a'},vapor:{n:'Vapor',a:'#c87fff'},mono:{n:'Mono',a:'#aaa'},gold:{n:'Gold',a:'#ffc857'},ocean:{n:'Ocean',a:'#4ac2c8'},rose:{n:'Rose',a:'#ff6b8a'}};
+function hexRgb(h){h=h.replace('#','');return{r:parseInt(h.substr(0,2),16),g:parseInt(h.substr(2,2),16),b:parseInt(h.substr(4,2),16)}}
+function lighten(h,a){const{r,g,b}=hexRgb(h);return'#'+[r,g,b].map(v=>Math.min(255,v+a).toString(16).padStart(2,'0')).join('')}
+function hexA(h,a){const{r,g,b}=hexRgb(h);return`rgba(${r},${g},${b},${a})`}
 function applyTheme(name){
-  const theme = THEMES[name] || THEMES.matrix;
-  document.documentElement.setAttribute('data-mode', S.mode);
-  const style = document.documentElement.style;
-
-  // For preset themes, sync the accent into S.colors so the color pickers reflect it
-  if (name !== 'custom'){
-    S.colors.accent = theme.accent;
-    S.colors.accentText = theme.accent;
-    S.colors.termPrompt = theme.accent;
-  }
-
-  // Set accent + derived border/glow alphas
-  const hex = S.colors.accent.replace('#', '');
-  const r = parseInt(hex.substr(0,2), 16);
-  const g = parseInt(hex.substr(2,2), 16);
-  const b = parseInt(hex.substr(4,2), 16);
-  style.setProperty('--accent', S.colors.accent);
-  style.setProperty('--accent-text', S.colors.accentText);
-  style.setProperty('--term-prompt', S.colors.termPrompt);
-  style.setProperty('--brd',  `rgba(${r},${g},${b},0.06)`);
-  style.setProperty('--brd2', `rgba(${r},${g},${b},0.14)`);
-  style.setProperty('--brdA', `rgba(${r},${g},${b},0.25)`);
-
-  // Mode-specific neutral backgrounds and text
-  if (S.mode === 'dark'){
-    // Allow user override of background color
-    const bg = S.colors.background || '#0a0a0a';
-    style.setProperty('--g0', bg);
-    style.setProperty('--g1', lighten(bg, 4));
-    style.setProperty('--g2', lighten(bg, 8));
-    style.setProperty('--g3', lighten(bg, 14));
-    style.setProperty('--g4', lighten(bg, 20));
-    style.setProperty('--tx1', S.colors.mainText || '#e8e8e8');
-    // Derive secondary text shades from the main text color
-    const txHex = (S.colors.mainText || '#e8e8e8').replace('#','');
-    const txR = parseInt(txHex.substr(0,2),16);
-    const txG = parseInt(txHex.substr(2,2),16);
-    const txB = parseInt(txHex.substr(4,2),16);
-    // Fade main text toward background for tx2/tx3/tx4
-    style.setProperty('--tx2', `rgb(${Math.round(txR*0.6)},${Math.round(txG*0.6)},${Math.round(txB*0.6)})`);
-    style.setProperty('--tx3', `rgb(${Math.round(txR*0.4)},${Math.round(txG*0.4)},${Math.round(txB*0.4)})`);
-    style.setProperty('--tx4', `rgb(${Math.round(txR*0.25)},${Math.round(txG*0.25)},${Math.round(txB*0.25)})`);
-    style.setProperty('--glass', hexToRgba(bg, 0.9));
-    style.setProperty('--titlebar', S.colors.titlebar || lighten(bg, 8));
-  } else {
-    style.setProperty('--g0', '#f5f5f3');
-    style.setProperty('--g1', '#ececea');
-    style.setProperty('--g2', '#e2e2e0');
-    style.setProperty('--g3', '#d8d8d6');
-    style.setProperty('--tx1', S.colors.mainText || '#1a1a1a');
-    const ltHex = (S.colors.mainText || '#1a1a1a').replace('#','');
-    const ltR = parseInt(ltHex.substr(0,2),16);
-    const ltG = parseInt(ltHex.substr(2,2),16);
-    const ltB = parseInt(ltHex.substr(4,2),16);
-    // Light mode: fade toward white (higher values = lighter)
-    const mix = (c, t, amt) => Math.round(c + (t - c) * amt);
-    style.setProperty('--tx2', `rgb(${mix(ltR,200,0.5)},${mix(ltG,200,0.5)},${mix(ltB,200,0.5)})`);
-    style.setProperty('--tx3', `rgb(${mix(ltR,200,0.7)},${mix(ltG,200,0.7)},${mix(ltB,200,0.7)})`);
-    style.setProperty('--tx4', `rgb(${mix(ltR,200,0.85)},${mix(ltG,200,0.85)},${mix(ltB,200,0.85)})`);
-    style.setProperty('--glass', 'rgba(245,245,243,0.85)');
-    style.setProperty('--titlebar', '#e2e2e0');
-  }
-
-  // Background image (only static images — GIFs were causing crashes)
-  if (S.bgImage){
-    document.body.style.backgroundImage = `url(${S.bgImage})`;
-    document.body.classList.add('has-bg');
-  } else {
-    document.body.style.backgroundImage = 'none';
-    document.body.classList.remove('has-bg');
-  }
-
-  // Update window transparency
-  style.setProperty('--winAlpha', (S.winAlpha / 100).toFixed(2));
-  document.querySelectorAll('.fw').forEach(el => {
-    el.style.background = S.mode === 'light'
-      ? `rgba(236,236,234,${S.winAlpha / 100})`
-      : hexToRgba(S.colors.background || '#0a0a0a', S.winAlpha / 100);
-  });
-
-  S.theme = name;
-  save();
-  document.title = `NEPT — ${CU}`;
-
-  // Update mode toggle label in the dropdown
-  const mIco = document.getElementById('mIco');
-  const mTxt = document.getElementById('mTxt');
-  if (mIco) mIco.textContent = S.mode === 'light' ? '🌙' : '☀';
-  if (mTxt) mTxt.textContent = S.mode === 'light' ? 'Dark Mode' : 'Light Mode';
-}
-
-/* Small color helpers */
-function lighten(hex, amt){
-  const h = hex.replace('#','');
-  const r = Math.min(255, parseInt(h.substr(0,2),16) + amt);
-  const g = Math.min(255, parseInt(h.substr(2,2),16) + amt);
-  const b = Math.min(255, parseInt(h.substr(4,2),16) + amt);
-  return '#' + [r,g,b].map(v => v.toString(16).padStart(2,'0')).join('');
-}
-function hexToRgba(hex, a){
-  const h = hex.replace('#','');
-  const r = parseInt(h.substr(0,2),16);
-  const g = parseInt(h.substr(2,2),16);
-  const b = parseInt(h.substr(4,2),16);
-  return `rgba(${r},${g},${b},${a})`;
-}
-
-function toggleMode(){
-  S.mode = S.mode === 'dark' ? 'light' : 'dark';
-  save();
-  applyTheme(S.theme);
-}
-
-/* ============================================================
-   CLOCK — updates every second in the taskbar
-   ============================================================ */
-setInterval(() => {
-  const el = document.getElementById('clk');
-  if (el) el.textContent = new Date().toLocaleTimeString('en-US', {
-    hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false
-  });
-}, 1000);
-
-/* ============================================================
-   DROPDOWN MENU helpers
-   ============================================================ */
-function toggleDD(btn){
-  const menu = btn.nextElementSibling;
-  const wasOpen = menu.classList.contains('show');
-  closeAllDD();
-  if (!wasOpen){
-    menu.classList.add('show');
-    btn.classList.add('open');
-  }
-}
-function closeAllDD(){
-  document.querySelectorAll('.dd-menu').forEach(m => m.classList.remove('show'));
-  document.querySelectorAll('.dd-btn').forEach(b => b.classList.remove('open'));
-}
-document.addEventListener('click', e => {
-  if (!e.target.closest('.dd-wrap')) closeAllDD();
-});
-
-/* ============================================================
-   WINDOW REGISTRY — every window type is defined here
-   l = label, o = open by default, x/y/w/h = default position & size
-   r = render function for the window body
-   ============================================================ */
-const W = {
-  terminal:   { l:'Terminal',   o:true,  x:20,  y:20, w:520, h:400, r:renderTerm },
-  pomodoro:   { l:'Pomodoro',   o:true,  x:560, y:20, w:320, h:440, r:renderPomo },
-  tasks:      { l:'Tasks',      o:false, x:40,  y:60, w:400, h:380, r:renderTasks },
-  matrix:     { l:'Matrix',     o:false, x:460, y:80, w:480, h:380, r:renderMx },
-  kanban:     { l:'Kanban',     o:false, x:60,  y:40, w:650, h:380, r:renderKanban },
-  notes:      { l:'Notes',      o:false, x:80,  y:50, w:520, h:400, r:renderNotes },
-  planner:    { l:'Planner',    o:false, x:100, y:30, w:400, h:420, r:renderPlanner },
-  analytics:  { l:'Analytics',  o:false, x:120, y:60, w:460, h:380, r:renderAnalytics },
-  scratchpad: { l:'Scratch',    o:false, x:140, y:80, w:380, h:320, r:renderScratch },
-  flashcards: { l:'Cards',      o:false, x:200, y:40, w:380, h:480, r:renderFC },
-  settings:   { l:'Settings',   o:false, x:160, y:50, w:460, h:520, r:renderSettings },
-  vault:      { l:'Vault',      o:false, x:180, y:40, w:420, h:440, r:renderVault }
-};
-let topZ = 50;
-
-/* PDF viewer windows are spawned dynamically — each gets a unique id */
-let pdfWinCount = 0;
-
-function openW(id){
-  if (!W[id]) return;
-  if (!W[id].o){ W[id].o = true; spawnWin(id); }
-  focusW(id);
-}
-function closeW(id){
-  if (!W[id]) return;
-  W[id].o = false;
-  despawnWin(id);
-  // Remove dynamic PDF windows entirely
-  if (id.startsWith('pdf_')) delete W[id];
-}
-
-function spawnWin(id){
-  const conf = W[id];
-  const ws = document.getElementById('ws');
-  const el = document.createElement('div');
-  el.className = 'fw spawning';
-  el.id = 'fw-' + id;
-  const bg = S.mode === 'light'
-    ? `rgba(236,236,234,${S.winAlpha / 100})`
-    : hexToRgba(S.colors.background || '#0a0a0a', S.winAlpha / 100);
-  el.style.cssText = `left:${conf.x}px;top:${conf.y}px;width:${conf.w}px;height:${conf.h}px;background:${bg}`;
-  el.innerHTML = `
-    <div class="rh rh-n" data-d="n" data-w="${id}"></div>
-    <div class="rh rh-s" data-d="s" data-w="${id}"></div>
-    <div class="rh rh-w" data-d="w" data-w="${id}"></div>
-    <div class="rh rh-e" data-d="e" data-w="${id}"></div>
-    <div class="rh rh-nw" data-d="nw" data-w="${id}"></div>
-    <div class="rh rh-ne" data-d="ne" data-w="${id}"></div>
-    <div class="rh rh-sw" data-d="sw" data-w="${id}"></div>
-    <div class="rh rh-se" data-d="se" data-w="${id}"></div>
-    <div class="fw-tb" data-wid="${id}">
-      <div class="fw-dots">
-        <button class="fw-d d-r" onclick="event.stopPropagation();closeW('${id}')"></button>
-        <button class="fw-d d-y" onclick="event.stopPropagation();closeW('${id}')"></button>
-        <button class="fw-d d-g" onclick="event.stopPropagation();maxW('${id}')"></button>
-      </div>
-      <span class="fw-title">${conf.l}</span>
-    </div>
-    <div class="fw-body"><div class="fw-inner" id="b-${id}"></div></div>`;
-  ws.appendChild(el);
-  setTimeout(() => el.classList.remove('spawning'), 400);
-  conf.r();
-  focusW(id);
-}
-
-function despawnWin(id){
-  const el = document.getElementById('fw-' + id);
-  if (!el) return;
-  el.classList.add('despawning');
-  setTimeout(() => el.remove(), 300);
-}
-
-/* Maximize / restore a window (triple dot) */
-function maxW(id){
-  const el = document.getElementById('fw-' + id);
-  const ws = document.getElementById('ws');
-  if (!el) return;
-  if (el.dataset.max === '1'){
-    // Restore
-    el.classList.add('snapping');
-    el.style.left = el.dataset.ol + 'px';
-    el.style.top = el.dataset.ot + 'px';
-    el.style.width = el.dataset.ow + 'px';
-    el.style.height = el.dataset.oh + 'px';
-    el.dataset.max = '0';
-    setTimeout(() => el.classList.remove('snapping'), 300);
-  } else {
-    // Save current, maximize
-    el.dataset.ol = parseInt(el.style.left);
-    el.dataset.ot = parseInt(el.style.top);
-    el.dataset.ow = el.offsetWidth;
-    el.dataset.oh = el.offsetHeight;
-    el.classList.add('snapping');
-    el.style.left = '0';
-    el.style.top = '0';
-    el.style.width = ws.clientWidth + 'px';
-    el.style.height = ws.clientHeight + 'px';
-    el.dataset.max = '1';
-    setTimeout(() => el.classList.remove('snapping'), 300);
-  }
-  focusW(id);
-}
-
-function focusW(id){
-  document.querySelectorAll('.fw').forEach(w => w.classList.remove('focused'));
-  const el = document.getElementById('fw-' + id);
-  if (el){ el.classList.add('focused'); el.style.zIndex = ++topZ; }
-  if (id === 'terminal') setTimeout(() => document.getElementById('tIn')?.focus(), 60);
-  if (focusMode) updateDim();
-}
-
-/* ============================================================
-   WINDOW DRAGGING — click title bar, drag anywhere on workspace
-   Snap to left/right half or full screen when dragged to edge
-   ============================================================ */
-(() => {
-  let drag = null, offsetX, offsetY;
-  const SNAP = 30;
-
-  document.addEventListener('mousedown', e => {
-    const tb = e.target.closest('.fw-tb');
-    if (!tb || e.target.closest('.fw-dots')) return;
-    const wid = tb.dataset.wid;
-    const el = document.getElementById('fw-' + wid);
-    if (!el || el.dataset.max === '1') return;
-    drag = { el, wid };
-    const r = el.getBoundingClientRect();
-    offsetX = e.clientX - r.left;
-    offsetY = e.clientY - r.top;
-    focusW(wid);
-    e.preventDefault();
-  });
-
-  document.addEventListener('mousemove', e => {
-    if (!drag) return;
-    const ws = document.getElementById('ws');
-    const wr = ws.getBoundingClientRect();
-    drag.el.style.left = (e.clientX - wr.left - offsetX) + 'px';
-    drag.el.style.top  = (e.clientY - wr.top  - offsetY) + 'px';
-
-    // Show snap preview as window approaches an edge
-    const guide = document.getElementById('snapG');
-    if (e.clientX < wr.left + SNAP){
-      guide.style.cssText = `display:block;left:0;top:0;width:${wr.width/2}px;height:${wr.height}px`;
-    } else if (e.clientX > wr.right - SNAP){
-      guide.style.cssText = `display:block;left:${wr.width/2}px;top:0;width:${wr.width/2}px;height:${wr.height}px`;
-    } else if (e.clientY < wr.top + SNAP + 32){
-      guide.style.cssText = `display:block;left:0;top:0;width:${wr.width}px;height:${wr.height}px`;
-    } else {
-      guide.style.display = 'none';
-    }
-  });
-
-  document.addEventListener('mouseup', e => {
-    if (!drag) return;
-    const ws = document.getElementById('ws');
-    const wr = ws.getBoundingClientRect();
-    document.getElementById('snapG').style.display = 'none';
-
-    // Apply the snap if user released near an edge
-    if (e.clientX < wr.left + SNAP){
-      snapTo(drag.el, 0, 0, wr.width/2, wr.height);
-    } else if (e.clientX > wr.right - SNAP){
-      snapTo(drag.el, wr.width/2, 0, wr.width/2, wr.height);
-    } else if (e.clientY < wr.top + SNAP + 32){
-      snapTo(drag.el, 0, 0, wr.width, wr.height);
-    }
-    drag = null;
-  });
-
-  function snapTo(el, l, t, w, h){
-    el.classList.add('snapping');
-    el.style.left = l + 'px';
-    el.style.top = t + 'px';
-    el.style.width = w + 'px';
-    el.style.height = h + 'px';
-    setTimeout(() => el.classList.remove('snapping'), 300);
-  }
-})();
-
-/* ============================================================
-   WINDOW RESIZING — grab any edge or corner
-   ============================================================ */
-(() => {
-  let resize = null, dir, origL, origT, origW, origH, mx, my;
-
-  document.addEventListener('mousedown', e => {
-    const handle = e.target.closest('.rh');
-    if (!handle) return;
-    const wid = handle.dataset.w;
-    dir = handle.dataset.d;
-    resize = document.getElementById('fw-' + wid);
-    origL = parseInt(resize.style.left);
-    origT = parseInt(resize.style.top);
-    origW = resize.offsetWidth;
-    origH = resize.offsetHeight;
-    mx = e.clientX;
-    my = e.clientY;
-    e.preventDefault();
-  });
-
-  document.addEventListener('mousemove', e => {
-    if (!resize) return;
-    const dx = e.clientX - mx;
-    const dy = e.clientY - my;
-    let nL = origL, nT = origT, nW = origW, nH = origH;
-    if (dir.includes('e')) nW = Math.max(280, origW + dx);
-    if (dir.includes('w')){ nW = Math.max(280, origW - dx); nL = origL + origW - nW; }
-    if (dir.includes('s')) nH = Math.max(180, origH + dy);
-    if (dir.includes('n')){ nH = Math.max(180, origH - dy); nT = origT + origH - nH; }
-    resize.style.left = nL + 'px';
-    resize.style.top = nT + 'px';
-    resize.style.width = nW + 'px';
-    resize.style.height = nH + 'px';
-  });
-
-  document.addEventListener('mouseup', () => { resize = null; });
-})();
-
-// Click anywhere on a window brings it to front
-document.addEventListener('mousedown', e => {
-  const w = e.target.closest('.fw');
-  if (w) focusW(w.id.replace('fw-', ''));
-});
-
-/* ============================================================
-   TERMINAL — the main command-driven interface
-   ============================================================ */
-let termHistory = [];
-let historyIndex = -1;
-
-const MOTD = `<span class="a"> ███╗  ██╗███████╗██████╗ ████████╗
- ████╗ ██║██╔════╝██╔══██╗╚══██╔══╝
- ██╔██╗██║█████╗  ██████╔╝   ██║
- ██║╚████║██╔══╝  ██╔═══╝    ██║
- ██║ ╚███║███████╗██║        ██║
- ╚═╝  ╚══╝╚══════╝╚═╝        ╚═╝</span>
-<span class="d">────────────────────────────────────</span>
- <span class="d">Type</span> <span class="c">help</span> <span class="d">for commands · Press</span> <span class="c">?</span>
-<span class="d">────────────────────────────────────</span>
-`;
-let termBuffer = MOTD;
-
-function renderTerm(){
-  const el = document.getElementById('b-terminal');
-  if (!el) return;
-  el.innerHTML = `<div class="t-out" id="tOut">${termBuffer}</div>
-    <div class="t-p">
-      <span class="t-ps">
-        <span style="color:var(--accent-text)">${CU || 'user'}</span><span style="color:var(--tx3)">@nept</span> <span style="color:var(--blue)">~</span> <span style="color:var(--term-prompt)">❯</span>
-      </span>
-      <input class="t-in" id="tIn" spellcheck="false" onkeydown="termKey(event)">
-    </div>`;
-  const out = document.getElementById('tOut');
-  if (out) out.scrollTop = out.scrollHeight;
-  document.getElementById('tIn')?.focus();
-}
-
-function termKey(e){
-  if (e.key === 'Enter'){
-    const v = document.getElementById('tIn').value.trim();
-    if (v){ termHistory.unshift(v); historyIndex = -1; execCmd(v); }
-    document.getElementById('tIn').value = '';
-  } else if (e.key === 'ArrowUp'){
-    e.preventDefault();
-    if (historyIndex < termHistory.length - 1){
-      historyIndex++;
-      document.getElementById('tIn').value = termHistory[historyIndex];
-    }
-  } else if (e.key === 'ArrowDown'){
-    e.preventDefault();
-    if (historyIndex > 0){
-      historyIndex--;
-      document.getElementById('tIn').value = termHistory[historyIndex];
-    } else {
-      historyIndex = -1;
-      document.getElementById('tIn').value = '';
-    }
-  }
-}
-
-function termPrint(html){ termBuffer += html + '\n'; renderTerm(); }
-function esc(s){ return String(s).replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
-
-/* Tokenize a command line, treating "quoted phrases" as one arg */
-function parseCommand(raw){
-  const tokens = [];
-  const re = /"([^"]*)"|(\S+)/g;
-  let m;
-  while ((m = re.exec(raw)) !== null) tokens.push(m[1] !== undefined ? m[1] : m[2]);
-  return tokens;
-}
-
-/* The big dispatcher — each keyword gets handled here */
-function execCmd(raw){
-  termPrint(`<span class="d">❯</span> <span class="c">${esc(raw)}</span>`);
-  const p = parseCommand(raw);
-  const cmd = p[0]?.toLowerCase();
-
-  if (cmd === 'help'){
-    termPrint(`<span class="i">commands:</span>
-  <span class="c">set task</span> [high|med|low] "text"   · add a task
-  <span class="c">ls tasks</span> · <span class="c">done</span> # · <span class="c">rm task</span> #
-  <span class="c">set card</span> "q" "a" ["deck"]   · <span class="c">study</span> · <span class="c">import cards</span>
-  <span class="c">set note</span> "title"   · <span class="c">set kanban</span> [col] "title"
-  <span class="c">pomo</span> start|stop|reset|set #
-  <span class="c">open</span> [window] · <span class="c">close</span> [window]
-  <span class="c">open document</span>   · open a file from disk
-  <span class="c">theme</span> [name] · <span class="c">light</span> · <span class="c">dark</span>
-  <span class="c">neofetch</span> · <span class="c">clear</span>`);
-  }
-  else if (cmd === 'clear'){ termBuffer = ''; renderTerm(); }
-  else if (cmd === 'neofetch'){
-    termPrint(`<span class="a">  ${CU}@nept</span>
-  <span class="d">──────────────</span>
-  <span class="i">Theme:</span>  ${S.theme} (${S.mode})
-  <span class="i">Tasks:</span>  ${S.tasks.length} · <span class="i">Cards:</span> ${S.flashcards.length}
-  <span class="i">Notes:</span>  ${S.notes.length} · <span class="i">Vault:</span> ${S.vault.length} files
-  <span class="i">Pomo:</span>   ${S.pomoSessions} sessions (${S.pomoTotalMin}m)`);
-  }
-  else if (cmd === 'set' && p[1]?.toLowerCase() === 'task'){
-    let priority = 'med', text = '';
-    const p2 = (p[2] || '').toLowerCase();
-    if (['high','hi','med','medium','low','lo'].includes(p2)){
-      priority = {hi:'high',high:'high',med:'med',medium:'med',lo:'low',low:'low'}[p2] || 'med';
-      text = p.slice(3).join(' ');
-    } else {
-      text = p.slice(2).join(' ');
-    }
-    if (!text) return termPrint('<span class="e">set task [pri] "text"</span>');
-    S.tasks.push({
-      id: Date.now(), text, done: false, pri: priority,
-      q: priority === 'high' ? 1 : priority === 'med' ? 2 : 4
-    });
-    save();
-    termPrint(`<span class="s">✓ "${text}"</span>`);
-    rerender('tasks','matrix');
-  }
-  else if (cmd === 'ls' && p[1]?.toLowerCase() === 'tasks'){
-    if (!S.tasks.length) return termPrint('<span class="d">empty</span>');
-    S.tasks.forEach((t, i) => termPrint(`  ${t.done ? '<span class="s">✓</span>' : '<span class="d">○</span>'} <span class="d">#${i+1}</span> ${esc(t.text)}`));
-  }
-  else if (cmd === 'done'){
-    const i = parseInt(p[1]) - 1;
-    if (isNaN(i) || !S.tasks[i]) return;
-    S.tasks[i].done = true;
-    S.tasksDone++;
-    save();
-    termPrint(`<span class="s">✓ done</span>`);
-    rerender('tasks','matrix');
-  }
-  else if (cmd === 'rm' && p[1]?.toLowerCase() === 'task'){
-    const i = parseInt(p[2]) - 1;
-    if (isNaN(i) || !S.tasks[i]) return;
-    S.tasks.splice(i, 1);
-    save();
-    termPrint('<span class="w">✗ removed</span>');
-    rerender('tasks','matrix');
-  }
-  else if (cmd === 'set' && p[1]?.toLowerCase() === 'card'){
-    // Usage: set card "question" "answer" or set card "question" "answer" "deck"
-    if (!p[2] || !p[3]) return termPrint('<span class="e">set card "q" "a" ["deck"]</span>');
-    const deck = p[4] || (S.fcDeck !== 'all' ? S.fcDeck : 'General');
-    // Auto-add deck if it doesn't exist
-    if (!S.decks.includes(deck)) S.decks.push(deck);
-    S.flashcards.push({
-      id: Date.now(), q: p[2], a: p[3], deck,
-      ease: 2.5, interval: 1, due: Date.now()
-    });
-    save();
-    termPrint(`<span class="s">✓ card added to ${esc(deck)}</span>`);
-    rerender('flashcards');
-  }
-  else if (cmd === 'study'){ openW('flashcards'); }
-  else if (cmd === 'import' && p[1]?.toLowerCase() === 'cards'){
-    document.getElementById('cardFileIn').click();
-  }
-  else if (cmd === 'set' && p[1]?.toLowerCase() === 'note'){
-    const t = p.slice(2).join(' ');
-    if (!t) return;
-    S.notes.unshift({ id: Date.now(), title: t, body: '', updated: Date.now() });
-    S.curNote = 0;
-    save();
-    termPrint('<span class="s">✓ note created</span>');
-    rerender('notes');
-  }
-  else if (cmd === 'set' && p[1]?.toLowerCase() === 'kanban'){
-    const col = p[2]?.toLowerCase();
-    const title = p.slice(3).join(' ');
-    if (!['backlog','todo','doing','done'].includes(col) || !title) return;
-    S.kanban[col].push({ id: Date.now(), title });
-    save();
-    termPrint('<span class="s">✓ card added</span>');
-    rerender('kanban');
-  }
-  else if (cmd === 'pomo'){
-    const sub = p[1]?.toLowerCase();
-    if (sub === 'start' && !pomo.running){ togglePomo(); }
-    else if (sub === 'stop' && pomo.running){ togglePomo(); }
-    else if (sub === 'reset'){ resetPomo(); }
-    else if (sub === 'set'){
-      const m = parseInt(p[2]);
-      if (m){ S.pomoTimes.focus = m; save(); pomo.timeLeft = m * 60; updatePomoUI(); }
-    }
-  }
-  else if (cmd === 'open'){
-    if (p[1]?.toLowerCase() === 'document'){
-      document.getElementById('fileIn').click();
-    } else {
-      const w = p[1]?.toLowerCase();
-      if (W[w]) openW(w);
-      else termPrint('<span class="e">unknown window</span>');
-    }
-  }
-  else if (cmd === 'close'){
-    const w = p[1]?.toLowerCase();
-    if (W[w]) closeW(w);
-  }
-  else if (cmd === 'theme'){
-    const t = p[1]?.toLowerCase();
-    if (THEMES[t]){ applyTheme(t); rerender('settings'); }
-    else termPrint(`<span class="e">themes: ${Object.keys(THEMES).join(', ')}</span>`);
-  }
-  else if (cmd === 'light'){ S.mode = 'light'; save(); applyTheme(S.theme); }
-  else if (cmd === 'dark'){ S.mode = 'dark'; save(); applyTheme(S.theme); }
-  else {
-    termPrint(`<span class="e">unknown: ${esc(cmd)}</span> · type <span class="c">help</span>`);
-  }
-}
-
-/* Re-render any currently open windows */
-function rerender(...ids){
-  ids.forEach(id => { if (W[id]?.o) W[id].r(); });
-}
-
-/* ============================================================
-   FILE HANDLERS — document opening, card import, bg upload
-   ============================================================ */
-function handleFile(e){
-  const f = e.target.files[0];
-  if (!f) return;
-  const r = new FileReader();
-  r.onload = ev => {
-    // Drop the file contents into a new note
-    S.notes.unshift({
-      id: Date.now(),
-      title: '📄 ' + f.name,
-      body: ev.target.result,
-      updated: Date.now()
-    });
-    S.curNote = 0;
-    save();
-    openW('notes');
-  };
-  r.readAsText(f);
-  e.target.value = '';
-}
-
-function handleCardFile(e){
-  const f = e.target.files[0];
-  if (!f) return;
-  const r = new FileReader();
-  r.onload = ev => {
-    try {
-      // Try parsing as JSON array first
-      const data = JSON.parse(ev.target.result);
-      if (Array.isArray(data)){
-        data.forEach(c => {
-          const deck = c.deck || (S.fcDeck !== 'all' ? S.fcDeck : 'General');
-          S.flashcards.push({
-            id: Date.now() + Math.random(),
-            q: c.q || c.front || c.question || '',
-            a: c.a || c.back || c.answer || '',
-            deck,
-            ease: 2.5, interval: 1, due: Date.now()
-          });
-        });
-      }
-    } catch (err){
-      // Fall back to CSV/TSV — one "q, a" per line
-      ev.target.result.split('\n').filter(l => l.trim()).forEach(l => {
-        const parts = l.split(/[,\t]/);
-        if (parts.length >= 2){
-          S.flashcards.push({
-            id: Date.now() + Math.random(),
-            q: parts[0].trim(),
-            a: parts[1].trim(),
-            deck: S.fcDeck !== 'all' ? S.fcDeck : 'General',
-            ease: 2.5, interval: 1, due: Date.now()
-          });
-        }
-      });
-    }
-    save();
-    rerender('flashcards');
-  };
-  r.readAsText(f);
-  e.target.value = '';
-}
-
-/**
- * Background image upload.
- * We deliberately restrict to static formats (PNG/JPG/WebP).
- * GIFs were causing performance issues with the matrix rain canvas
- * compositing over them so they're disabled for now.
- */
-function handleBgFile(e){
-  const f = e.target.files[0];
-  if (!f) return;
-  // Safety: reject large files that would crash the page
-  if (f.size > 8 * 1024 * 1024){
-    alert('Background image too large (max 8MB). Use a smaller file.');
-    e.target.value = '';
-    return;
-  }
-  const r = new FileReader();
-  r.onload = ev => {
-    S.bgImage = ev.target.result;
-    save();
-    applyTheme(S.theme);
-    rerender('settings');
-  };
-  r.readAsDataURL(f);
-  e.target.value = '';
-}
-
-/* ============================================================
-   VAULT — personal file storage
-   PDFs open in their own floating windows (new behavior)
-   ============================================================ */
-function handleVaultFiles(e){
-  Array.from(e.target.files).forEach(f => {
-    // Cap individual file size to prevent localStorage overflow
-    if (f.size > 5 * 1024 * 1024){
-      alert(`"${f.name}" is too large (${(f.size/1024/1024).toFixed(1)}MB). Max 5MB per file.`);
-      return;
-    }
-    const r = new FileReader();
-    r.onload = ev => {
-      S.vault.push({
-        id: Date.now() + Math.random(),
-        name: f.name,
-        size: f.size,
-        type: f.type,
-        data: ev.target.result,
-        added: Date.now()
-      });
-      save();
-      rerender('vault');
-    };
-    // PDFs and images need data URLs, text files stay as text
-    if (f.type.startsWith('image') || f.type === 'application/pdf'){
-      r.readAsDataURL(f);
-    } else {
-      r.readAsText(f);
-    }
-  });
-  e.target.value = '';
-}
-
-function renderVault(){
-  const el = document.getElementById('b-vault');
-  if (!el) return;
-
-  // File type → emoji icon lookup
-  const icons = {
-    'text/': '📄',
-    'application/json': '📋',
-    'application/pdf': '📑',
-    'image/': '🖼',
-    'default': '📁'
-  };
-  function iconFor(type){
-    for (const [k, v] of Object.entries(icons)){
-      if (type?.startsWith(k)) return v;
-    }
-    return icons.default;
-  }
-
-  el.innerHTML = `
-    <div class="vault-drop" onclick="document.getElementById('vaultFileIn').click()">
-      📂 Click to upload files
-    </div>
-    ${S.vault.length ? `
-      <div class="sl">${S.vault.length} file${S.vault.length === 1 ? '' : 's'}</div>
-      <div class="vault-list">
-        ${S.vault.map((f, i) => `
-          <div class="vault-item" onclick="openVaultFile(${i})">
-            <span style="font-size:16px">${iconFor(f.type)}</span>
-            <div style="flex:1;min-width:0">
-              <div style="white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${esc(f.name)}</div>
-              <div style="font-size:10px;color:var(--tx4)">${(f.size/1024).toFixed(1)}KB</div>
-            </div>
-            <span class="vault-del" onclick="event.stopPropagation();S.vault.splice(${i},1);save();renderVault()">✕</span>
-          </div>
-        `).join('')}
-      </div>
-    ` : '<div style="color:var(--tx4);font-size:12px;text-align:center;padding:20px">Empty vault</div>'}
-  `;
-}
-
-/* Open a vault file — PDFs get their own window, images too, text goes into Notes */
-function openVaultFile(index){
-  const file = S.vault[index];
-  if (!file) return;
-
-  if (file.type === 'application/pdf'){
-    // Spawn a dedicated PDF viewer window
-    pdfWinCount++;
-    const winId = 'pdf_' + pdfWinCount;
-    W[winId] = {
-      l: file.name.length > 20 ? file.name.substring(0, 18) + '…' : file.name,
-      o: true,
-      x: 100 + (pdfWinCount * 30),
-      y: 80 + (pdfWinCount * 30),
-      w: 700, h: 600,
-      r: () => {
-        const el = document.getElementById('b-' + winId);
-        if (el) el.innerHTML = `<iframe class="pdf-viewer" src="${file.data}"></iframe>`;
-      }
-    };
-    spawnWin(winId);
-  }
-  else if (file.type?.startsWith('image')){
-    // Spawn an image viewer window
-    pdfWinCount++;
-    const winId = 'pdf_' + pdfWinCount;
-    W[winId] = {
-      l: file.name.length > 20 ? file.name.substring(0, 18) + '…' : file.name,
-      o: true,
-      x: 100 + (pdfWinCount * 30),
-      y: 80 + (pdfWinCount * 30),
-      w: 500, h: 500,
-      r: () => {
-        const el = document.getElementById('b-' + winId);
-        if (el) el.innerHTML = `<img src="${file.data}" style="max-width:100%;max-height:100%;display:block;margin:0 auto;border-radius:var(--rs)">`;
-      }
-    };
-    spawnWin(winId);
-  }
-  else {
-    // Text / code files open into Notes
-    S.notes.unshift({
-      id: Date.now(),
-      title: '📄 ' + file.name,
-      body: file.data,
-      updated: Date.now()
-    });
-    S.curNote = 0;
-    save();
-    openW('notes');
-  }
-}
-
-/* ============================================================
-   POMODORO — focus timer with session log
-   ============================================================ */
-const POMO_CIRCUMFERENCE = 2 * Math.PI * 67;
-let pomo = { running: false, mode: 'focus', timeLeft: 25 * 60, interval: null };
-
-function getPomoTotal(){ return S.pomoTimes[pomo.mode] * 60; }
-
-function updatePomoUI(){
-  const m = Math.floor(pomo.timeLeft / 60);
-  const s = pomo.timeLeft % 60;
-  const display = document.getElementById('pT');
-  if (display) display.textContent = `${String(m).padStart(2,'0')}:${String(s).padStart(2,'0')}`;
-  const ring = document.getElementById('pR');
-  if (ring){
-    const progress = 1 - pomo.timeLeft / getPomoTotal();
-    ring.style.strokeDashoffset = POMO_CIRCUMFERENCE * (1 - progress);
-  }
-}
-
-function togglePomo(){
-  if (pomo.running){
-    // Pause
-    clearInterval(pomo.interval);
-    pomo.running = false;
-  } else {
-    // Start
-    pomo.running = true;
-    pomo.interval = setInterval(() => {
-      pomo.timeLeft--;
-      if (pomo.timeLeft <= 0){
-        // Session complete
-        clearInterval(pomo.interval);
-        pomo.running = false;
-        if (pomo.mode === 'focus'){
-          S.pomoSessions++;
-          S.pomoTotalMin += S.pomoTimes.focus;
-          const note = document.getElementById('pN')?.value.trim() || '';
-          S.pomoLog.unshift({
-            time: new Date().toLocaleTimeString('en-US', { hour:'2-digit', minute:'2-digit' }),
-            dur: S.pomoTimes.focus,
-            note
-          });
-          S.heatmap[27] = Math.min(4, (S.heatmap[27] || 0) + 1);
-          save();
-        }
-        // Ring a little bell
-        try {
-          const c = new AudioContext();
-          const o = c.createOscillator();
-          const g = c.createGain();
-          o.connect(g); g.connect(c.destination);
-          o.frequency.value = 830;
-          g.gain.setValueAtTime(0.2, c.currentTime);
-          g.gain.exponentialRampToValueAtTime(0.001, c.currentTime + 1);
-          o.start(); o.stop(c.currentTime + 1);
-        } catch (e){}
-        // Alternate between focus and breaks
-        setPomoMode(pomo.mode === 'focus'
-          ? (S.pomoSessions % 4 === 0 ? 'long' : 'short')
-          : 'focus');
-      }
-      updatePomoUI();
-    }, 1000);
-  }
-  renderPomo();
-}
-
-function resetPomo(){
-  clearInterval(pomo.interval);
-  pomo.running = false;
-  pomo.timeLeft = getPomoTotal();
-  renderPomo();
-}
-
-function setPomoMode(m){
-  pomo.mode = m;
-  pomo.timeLeft = S.pomoTimes[m] * 60;
-  pomo.running = false;
-  clearInterval(pomo.interval);
-  renderPomo();
-}
-
-function renderPomo(){
-  const el = document.getElementById('b-pomodoro');
-  if (!el) return;
-  el.innerHTML = `
-    <div class="po-edit" id="pE">
-      <div class="sl">Edit Timer</div>
-      <div style="display:flex;align-items:center;gap:6px;margin-bottom:4px">
-        <label style="font-size:12px;color:var(--tx2);width:40px">Focus</label>
-        <input class="input" type="number" id="eF" value="${S.pomoTimes.focus}" style="width:50px;text-align:center">
-      </div>
-      <div style="display:flex;align-items:center;gap:6px;margin-bottom:4px">
-        <label style="font-size:12px;color:var(--tx2);width:40px">Short</label>
-        <input class="input" type="number" id="eS" value="${S.pomoTimes.short}" style="width:50px;text-align:center">
-      </div>
-      <div style="display:flex;align-items:center;gap:6px;margin-bottom:4px">
-        <label style="font-size:12px;color:var(--tx2);width:40px">Long</label>
-        <input class="input" type="number" id="eL" value="${S.pomoTimes.long}" style="width:50px;text-align:center">
-      </div>
-      <div style="display:flex;gap:4px">
-        <button class="btn btn-g" onclick="savePomoEdit()">OK</button>
-        <button class="btn" onclick="document.getElementById('pE').classList.remove('show')">✕</button>
-      </div>
-    </div>
-    <div class="po-w">
-      <div class="po-rb">
-        <svg viewBox="0 0 150 150">
-          <circle class="po-bg" cx="75" cy="75" r="67"/>
-          <circle class="po-fg" id="pR" cx="75" cy="75" r="67"/>
-        </svg>
-        <div class="po-t" id="pT" onclick="if(!pomo.running)document.getElementById('pE').classList.add('show')">--:--</div>
-        <div class="po-ph" id="pPh">${ {focus:'Focus', short:'Break', long:'Long Break'}[pomo.mode] }</div>
-      </div>
-      <div class="po-btns">
-        <button class="btn btn-g" onclick="togglePomo()">${pomo.running ? 'PAUSE' : 'START'}</button>
-        <button class="btn" onclick="resetPomo()">RESET</button>
-        <button class="btn" onclick="skipPomo()">SKIP</button>
-      </div>
-      <div class="po-modes">
-        <button class="po-mb ${pomo.mode==='focus'?'act':''}" onclick="setPomoMode('focus')">Focus</button>
-        <button class="po-mb ${pomo.mode==='short'?'act':''}" onclick="setPomoMode('short')">Short</button>
-        <button class="po-mb ${pomo.mode==='long'?'act':''}" onclick="setPomoMode('long')">Long</button>
-      </div>
-      <div class="po-dots">
-        ${Array(4).fill(0).map((_,i) => `<div class="po-d ${i < S.pomoSessions % 4 ? 'dn' : ''}"></div>`).join('')}
-      </div>
-    </div>
-    <textarea class="po-note" id="pN" placeholder="session note..."></textarea>
-    <div class="sl">Log</div>
-    <div class="po-log">
-      ${S.pomoLog.slice(0, 6).map(e => `
-        <div class="po-le">
-          <div><span style="color:var(--accent)">●</span> ${e.dur}m${e.note ? ` <span style="color:var(--tx4)">— ${esc(e.note)}</span>` : ''}</div>
-          <span style="color:var(--tx4)">${e.time}</span>
-        </div>
-      `).join('')}
-    </div>`;
-  updatePomoUI();
-}
-function savePomoEdit(){
-  S.pomoTimes.focus = parseInt(document.getElementById('eF').value) || 25;
-  S.pomoTimes.short = parseInt(document.getElementById('eS').value) || 5;
-  S.pomoTimes.long  = parseInt(document.getElementById('eL').value) || 15;
-  save();
-  pomo.timeLeft = getPomoTotal();
-  document.getElementById('pE').classList.remove('show');
-  renderPomo();
-}
-function skipPomo(){
-  clearInterval(pomo.interval);
-  pomo.running = false;
-  setPomoMode(pomo.mode === 'focus' ? 'short' : 'focus');
-}
-
-/* ============================================================
-   WINDOW RENDERERS — each panel's content
-   ============================================================ */
-
-function renderTasks(){
-  const el = document.getElementById('b-tasks');
-  if (!el) return;
-  el.innerHTML = `
-    <div style="display:flex;gap:4px;margin-bottom:6px">
-      <input class="input" id="tI" placeholder="new task..." onkeydown="if(event.key==='Enter')addTaskFromGUI()">
-      <select class="input" id="tP" style="width:65px;font-size:11px">
-        <option value="high">high</option>
-        <option value="med" selected>med</option>
-        <option value="low">low</option>
-      </select>
-      <button class="btn btn-g" onclick="addTaskFromGUI()">+</button>
-    </div>
-    ${S.tasks.length
-      ? S.tasks.map(t => `
-          <div class="ti">
-            <div class="tc ${t.done ? 'dn' : ''}" onclick="toggleTask(${t.id})"></div>
-            <span class="tt ${t.done ? 'dn' : ''}">${esc(t.text)}</span>
-            <span class="badge b-${t.pri === 'high' ? 'hi' : t.pri === 'med' ? 'md' : 'lo'}">${t.pri}</span>
-          </div>
-        `).join('')
-      : '<div style="color:var(--tx4);font-size:12px;padding:10px">empty</div>'
-    }`;
-}
-function addTaskFromGUI(){
-  const input = document.getElementById('tI');
-  if (!input?.value.trim()) return;
-  const priority = document.getElementById('tP').value;
-  S.tasks.push({
-    id: Date.now(),
-    text: input.value.trim(),
-    done: false,
-    pri: priority,
-    q: priority === 'high' ? 1 : priority === 'med' ? 2 : 4
-  });
-  input.value = '';
-  save();
-  renderTasks();
-  rerender('matrix');
-}
-function toggleTask(id){
-  const t = S.tasks.find(x => x.id === id);
-  if (t){
-    t.done = !t.done;
-    if (t.done) S.tasksDone++;
-    save();
-    renderTasks();
-    rerender('matrix');
-  }
-}
-
-function renderMx(){
-  const el = document.getElementById('b-matrix');
-  if (!el) return;
-  const quadrants = [
-    { q: 1, label: 'Urgent + Important', cls: 'q1' },
-    { q: 2, label: 'Important',          cls: 'q2' },
-    { q: 3, label: 'Urgent',             cls: 'q3' },
-    { q: 4, label: 'Neither',            cls: 'q4' }
-  ];
-  el.innerHTML = `<div class="mx-g">${quadrants.map(({q, label, cls}) => `
-    <div class="mx-q ${cls}">
-      <div class="mx-ql"><span class="mx-dt"></span>${label}</div>
-      ${S.tasks.filter(t => t.q === q && !t.done).map(t => `
-        <div class="mx-i" onclick="toggleTask(${t.id})">${esc(t.text)}</div>
-      `).join('') || '<div style="font-size:11px;color:var(--tx4)">—</div>'}
-    </div>
-  `).join('')}</div>`;
-}
-
-let kanbanDrag = null;
-function renderKanban(){
-  const el = document.getElementById('b-kanban');
-  if (!el) return;
-  const cols = ['backlog', 'todo', 'doing', 'done'];
-  el.innerHTML = `<div class="kb-c">${cols.map(col => `
-    <div class="kb-co">
-      <div class="kb-h">
-        <span class="kb-n">${col === 'todo' ? 'To Do' : col === 'doing' ? 'In Progress' : col[0].toUpperCase() + col.slice(1)} <span class="kb-ct">${(S.kanban[col] || []).length}</span></span>
-        ${col !== 'done' ? `<button class="btn btn-s" onclick="addKanban('${col}')">+</button>` : ''}
-      </div>
-      <div class="kb-cs" ondragover="event.preventDefault()" ondrop="dropKanban('${col}')">
-        ${(S.kanban[col] || []).map(c => `
-          <div class="kb-cd" draggable="true" ondragstart="kanbanDrag={id:${c.id},from:'${col}'}">${esc(c.title)}</div>
-        `).join('')}
-      </div>
-    </div>
-  `).join('')}</div>`;
-}
-function addKanban(col){
-  // Create inline input at top of column
-  const colEl = document.querySelector(`[ondrop="dropKanban('${col}')"]`);
-  if (!colEl) return;
-  const existing = colEl.querySelector('.kb-inline-add');
-  if (existing){ existing.focus(); return; }
-  const inp = document.createElement('input');
-  inp.className = 'input kb-inline-add';
-  inp.placeholder = 'card title...';
-  inp.style.cssText = 'font-size:12px;margin-bottom:4px';
-  inp.onkeydown = e => {
-    if (e.key === 'Enter' && inp.value.trim()){
-      S.kanban[col].push({ id: Date.now(), title: inp.value.trim() });
-      save();
-      renderKanban();
-    }
-    if (e.key === 'Escape') inp.remove();
-  };
-  inp.onblur = () => { if (!inp.value.trim()) inp.remove(); };
-  colEl.prepend(inp);
-  inp.focus();
-}
-function dropKanban(toCol){
-  if (!kanbanDrag) return;
-  let card;
-  for (const c of Object.keys(S.kanban)){
-    const i = S.kanban[c].findIndex(x => x.id === kanbanDrag.id);
-    if (i >= 0){ card = S.kanban[c].splice(i, 1)[0]; break; }
-  }
-  if (card){
-    S.kanban[toCol].push(card);
-    save();
-    renderKanban();
-  }
-  kanbanDrag = null;
-}
-
-function renderNotes(){
-  const el = document.getElementById('b-notes');
-  if (!el) return;
-  el.innerHTML = `
-    <div style="display:flex;gap:8px;height:100%">
-      <div style="width:130px;flex-shrink:0">
-        <button class="btn btn-g btn-s" style="width:100%;margin-bottom:4px" onclick="newNote()">+ New</button>
-        <div class="nl">
-          ${S.notes.map((n, i) => `
-            <div class="ni ${i === S.curNote ? 'act' : ''}" onclick="selectNote(${i})">${esc(n.title || 'untitled')}</div>
-          `).join('')}
-        </div>
-      </div>
-      <div style="flex:1;display:flex;flex-direction:column">
-        <input class="input" id="nT" value="${esc(S.notes[S.curNote]?.title || '')}" placeholder="title..." style="margin-bottom:4px;font-size:15px;font-weight:700" oninput="updateNoteTitle(this.value)">
-        <textarea class="input" id="nB" placeholder="start typing..." style="flex:1;min-height:160px;line-height:1.6;font-size:13px;resize:none" oninput="updateNoteBody(this.value)">${esc(S.notes[S.curNote]?.body || '')}</textarea>
-      </div>
-    </div>`;
-}
-function newNote(){
-  S.notes.unshift({ id: Date.now(), title: '', body: '', updated: Date.now() });
-  S.curNote = 0;
-  save();
-  renderNotes();
-  setTimeout(() => document.getElementById('nT')?.focus(), 50);
-}
-function selectNote(i){ S.curNote = i; save(); renderNotes(); }
-function updateNoteTitle(v){ if (S.notes[S.curNote]){ S.notes[S.curNote].title = v; save(); } }
-function updateNoteBody(v){ if (S.notes[S.curNote]){ S.notes[S.curNote].body = v; save(); } }
-
-function renderPlanner(){
-  const el = document.getElementById('b-planner');
-  if (!el) return;
-  const today = new Date().toISOString().slice(0, 10);
-  if (!S.planner[today]) S.planner[today] = {};
-  const hours = Array.from({ length: 17 }, (_, i) => i + 6); // 6am-10pm
-  el.innerHTML = `
-    <div class="sl">${new Date().toLocaleDateString('en-US', { weekday:'long', month:'short', day:'numeric' })}</div>
-    ${hours.map(h => {
-      const label = h < 12 ? `${h} am` : h === 12 ? '12 pm' : `${h - 12} pm`;
-      const value = S.planner[today][h] || '';
-      return `<div class="pl-r">
-        <div class="pl-t">${label}</div>
-        <div class="pl-s ${value ? 'filled' : ''}" contenteditable="true"
-             oninput="savePlannerSlot('${today}',${h},this)"
-             onblur="if(!this.textContent.trim())this.classList.remove('filled')">${esc(value)}</div>
-      </div>`;
-    }).join('')}`;
-}
-function savePlannerSlot(date, hour, el){
-  if (!S.planner[date]) S.planner[date] = {};
-  S.planner[date][hour] = el.textContent;
-  el.classList.toggle('filled', !!el.textContent.trim());
-  save();
-}
-
-function renderFC(){
-  const el = document.getElementById('b-flashcards');
-  if (!el) return;
-  if (!S.decks) S.decks = ['General'];
-  if (!S.fcDeck) S.fcDeck = 'all';
-  const filtered = S.fcDeck === 'all' ? S.flashcards : S.flashcards.filter(c => c.deck === S.fcDeck);
-  const due = filtered.filter(c => !c.due || c.due <= Date.now());
-  el.innerHTML = `
-    <div style="display:flex;gap:4px;margin-bottom:8px;flex-wrap:wrap">
-      <button class="btn btn-s ${S.fcDeck === 'all' ? 'btn-g' : ''}" onclick="S.fcDeck='all';S.fcIdx=0;save();renderFC()">All (${S.flashcards.length})</button>
-      ${S.decks.map(d => {
-        const count = S.flashcards.filter(c => c.deck === d).length;
-        return `<button class="btn btn-s ${S.fcDeck === d ? 'btn-g' : ''}" onclick="S.fcDeck='${esc(d)}';S.fcIdx=0;save();renderFC()">${esc(d)} (${count})</button>`;
-      }).join('')}
-      <button class="btn btn-s" onclick="showDeckInput()">+ Deck</button>
-      <span id="deckInputWrap" style="display:none">
-        <input class="input" id="deckNameInput" placeholder="deck name..." style="width:120px;display:inline;font-size:11px" onkeydown="if(event.key==='Enter')confirmNewDeck()">
-        <button class="btn btn-s btn-g" onclick="confirmNewDeck()">✓</button>
-      </span>
-    </div>
-    <div class="tab-bar">
-      <button class="tab act" onclick="fcTab(0,this)">Study (${due.length})</button>
-      <button class="tab" onclick="fcTab(1,this)">All</button>
-      <button class="tab" onclick="fcTab(2,this)">Add</button>
-    </div>
-    <div class="tab-content act">${renderFCStudy(due)}</div>
-    <div class="tab-content">${renderFCAll(filtered)}</div>
-    <div class="tab-content">${renderFCAdd()}</div>`;
-}
-function showDeckInput(){
-  const wrap = document.getElementById('deckInputWrap');
-  if (wrap){ wrap.style.display = 'inline'; }
-  const inp = document.getElementById('deckNameInput');
-  if (inp){ inp.value = ''; inp.focus(); }
-}
-function confirmNewDeck(){
-  const inp = document.getElementById('deckNameInput');
-  const name = inp?.value.trim();
-  if (!name) return;
-  if (!S.decks.includes(name)){
-    S.decks.push(name);
-  }
-  S.fcDeck = name;
-  S.fcIdx = 0;
-  save();
-  renderFC();
-}
-function fcTab(i, btn){
-  document.querySelectorAll('#b-flashcards .tab').forEach(t => t.classList.remove('act'));
-  btn.classList.add('act');
-  document.querySelectorAll('#b-flashcards .tab-content').forEach((t, j) => t.classList.toggle('act', j === i));
-}
-function renderFCStudy(due){
-  if (!due.length) return '<div style="text-align:center;padding:20px;color:var(--tx3)">✓ all caught up</div>';
-  const card = due[S.fcIdx % due.length];
-  return `
-    <div class="fc-card" onclick="this.classList.toggle('flipped')">
-      <div class="fc-inner">
-        <div class="fc-face fc-front"><span class="fc-fl">Q · ${esc(card.deck || 'General')}</span>${esc(card.q)}</div>
-        <div class="fc-face fc-back"><span class="fc-fl">A</span>${esc(card.a)}</div>
-      </div>
-    </div>
-    <div style="text-align:center;font-size:12px;color:var(--tx4)">${(S.fcIdx % due.length) + 1} / ${due.length}</div>
-    <div class="fc-rate">
-      <button class="fc-rb fc-ra" onclick="rateCard(${card.id},0)">Again</button>
-      <button class="fc-rb fc-rh" onclick="rateCard(${card.id},1)">Hard</button>
-      <button class="fc-rb fc-rg" onclick="rateCard(${card.id},2)">Good</button>
-      <button class="fc-rb fc-re" onclick="rateCard(${card.id},3)">Easy</button>
-    </div>
-    <div style="display:flex;justify-content:center;gap:4px;margin-top:6px">
-      <button class="btn btn-s" onclick="S.fcIdx=Math.max(0,S.fcIdx-1);save();renderFC()">←</button>
-      <button class="btn btn-s" onclick="S.flashcards.sort(()=>Math.random()-0.5);S.fcIdx=0;save();renderFC()">⟳</button>
-      <button class="btn btn-s" onclick="S.fcIdx++;save();renderFC()">→</button>
-    </div>`;
-}
-/* SM-2-inspired spaced repetition ratings */
-function rateCard(id, rating){
-  const c = S.flashcards.find(x => x.id === id);
-  if (!c) return;
-  if (rating === 0){ c.interval = 1; c.ease = Math.max(1.3, c.ease - 0.2); }
-  else if (rating === 1){ c.interval = Math.max(1, Math.ceil(c.interval * 1.2)); }
-  else if (rating === 2){ c.interval = Math.ceil(c.interval * c.ease); c.ease += 0.05; }
-  else { c.interval = Math.ceil(c.interval * c.ease * 1.3); c.ease += 0.15; }
-  c.due = Date.now() + c.interval * 86400000;
-  S.fcIdx++;
-  save();
-  renderFC();
-}
-function renderFCAll(filtered){
-  if (!filtered) filtered = S.flashcards;
-  return filtered.length
-    ? `<div class="fc-list">${filtered.map((f, i) => {
-        const globalIdx = S.flashcards.indexOf(f);
-        return `<div class="fc-li">
-          <span>${esc(f.q)}</span>
-          <span style="color:var(--tx4);font-size:9px;margin:0 4px">${esc(f.deck || 'General')} · ${f.interval || 1}d</span>
-          <span class="fc-del" onclick="S.flashcards.splice(${globalIdx},1);save();renderFC()">✕</span>
-        </div>`;
-      }).join('')}</div>
-      ${S.fcDeck !== 'all' ? `<button class="btn btn-d btn-s" style="margin-top:8px" onclick="if(confirm('Delete deck \\'${esc(S.fcDeck)}\\'? Cards will move to General.')){moveDeckToGeneral('${esc(S.fcDeck)}');S.decks=S.decks.filter(d=>d!=='${esc(S.fcDeck)}');S.fcDeck='all';save();renderFC()}">Delete this deck</button>` : ''}`
-    : '<div style="color:var(--tx4);padding:10px">no cards</div>';
-}
-function moveDeckToGeneral(deck){
-  S.flashcards.forEach(c => { if (c.deck === deck) c.deck = 'General'; });
-}
-function renderFCAdd(){
-  return `
-    <div style="display:flex;flex-direction:column;gap:6px">
-      <input class="input" id="fcQ" placeholder="question..." onkeydown="if(event.key==='Enter')document.getElementById('fcAn').focus()">
-      <input class="input" id="fcAn" placeholder="answer..." onkeydown="if(event.key==='Enter')addFlashcard()">
-      <select class="input" id="fcDeckSel" style="font-size:12px">
-        ${S.decks.map(d => `<option value="${esc(d)}" ${d === S.fcDeck && S.fcDeck !== 'all' ? 'selected' : ''}>${esc(d)}</option>`).join('')}
-      </select>
-      <button class="btn btn-g" onclick="addFlashcard()">Add Card (or press Enter)</button>
-      <div class="sl">Import</div>
-      <button class="btn" onclick="document.getElementById('cardFileIn').click()">Import File (JSON/CSV)</button>
-      <div style="font-size:10px;color:var(--tx4)">JSON: [{"q":"...","a":"...","deck":"BIO 101"}] or CSV: question,answer per line</div>
-    </div>`;
-}
-function addFlashcard(){
-  const q = document.getElementById('fcQ')?.value.trim();
-  const a = document.getElementById('fcAn')?.value.trim();
-  if (!q || !a) return;
-  const deck = document.getElementById('fcDeckSel')?.value || 'General';
-  S.flashcards.push({ id: Date.now(), q, a, deck, ease: 2.5, interval: 1, due: Date.now() });
-  save();
-  renderFC();
-}
-
-function renderAnalytics(){
-  const el = document.getElementById('b-analytics');
-  if (!el) return;
-  el.innerHTML = `
-    <div class="an-g">
-      <div class="an-c"><h4>Focus</h4><div class="an-b">${S.pomoTotalMin}m</div><div style="font-size:11px;color:var(--tx4)">${S.pomoSessions} sessions</div></div>
-      <div class="an-c"><h4>Done</h4><div class="an-b">${S.tasksDone || 0}</div></div>
-      <div class="an-c"><h4>Cards</h4><div class="an-b">${S.flashcards.length}</div></div>
-      <div class="an-c"><h4>Vault</h4><div class="an-b">${S.vault.length}</div></div>
-      <div class="an-c" style="grid-column:1/-1">
-        <h4>Heatmap (4 weeks)</h4>
-        <div class="hm">${S.heatmap.map(v => `<div class="hm-c ${v > 0 ? 'l' + Math.min(v, 4) : ''}"></div>`).join('')}</div>
-      </div>
-    </div>`;
-}
-
-function renderScratch(){
-  const el = document.getElementById('b-scratchpad');
-  if (!el) return;
-  el.innerHTML = `<textarea class="input" style="height:100%;resize:none;line-height:1.7;font-size:13px" placeholder="scratchpad — jot anything..." oninput="S.scratchpad=this.value;save()">${esc(S.scratchpad || '')}</textarea>`;
-}
-
-/* ============================================================
-   SETTINGS — themes, full color customization, mode, profile
-   ============================================================ */
-function renderSettings(){
-  const el = document.getElementById('b-settings');
-  if (!el) return;
-  el.innerHTML = `
-    <div class="sl">Main Theme</div>
-    <div class="theme-grid">${Object.entries(THEMES).map(([k, t]) => `
-      <div class="theme-card ${S.theme === k ? 'active' : ''}" onclick="applyTheme('${k}');renderSettings()">
-        <div class="theme-preview"><div class="theme-dot" style="background:${t.accent}"></div></div>
-        <div style="color:var(--tx2)">${t.name}</div>
-      </div>
-    `).join('')}</div>
-
-    <div class="sl">Mode</div>
-    <div style="display:flex;gap:4px;margin-bottom:8px">
-      <button class="btn ${S.mode === 'dark' ? 'btn-g' : ''}" onclick="S.mode='dark';save();applyTheme(S.theme);renderSettings()">🌙 Dark</button>
-      <button class="btn ${S.mode === 'light' ? 'btn-g' : ''}" onclick="S.mode='light';save();applyTheme(S.theme);renderSettings()">☀ Light</button>
-    </div>
-
-    <div class="sl">Transparency</div>
-    <div class="alpha-row">
-      <label>Windows</label>
-      <input type="range" class="alpha-slider" min="30" max="100" value="${S.winAlpha}"
-             oninput="S.winAlpha=parseInt(this.value);this.nextElementSibling.textContent=this.value+'%';save();applyTheme(S.theme)">
-      <span class="alpha-val">${S.winAlpha}%</span>
-    </div>
-
-    <div class="sl">Full Color Customization</div>
-    <div class="color-row">
-      <label>Accent (brand)</label>
-      <input type="color" value="${S.colors.accent}" onchange="S.colors.accent=this.value;save();applyTheme('custom');renderSettings()">
-    </div>
-    <div class="color-row">
-      <label>Accent Text</label>
-      <input type="color" value="${S.colors.accentText}" onchange="S.colors.accentText=this.value;save();applyTheme('custom');renderSettings()">
-    </div>
-    <div class="color-row">
-      <label>Main Text</label>
-      <input type="color" value="${S.colors.mainText}" onchange="S.colors.mainText=this.value;save();applyTheme('custom');renderSettings()">
-    </div>
-    <div class="color-row">
-      <label>Background</label>
-      <input type="color" value="${S.colors.background}" onchange="S.colors.background=this.value;save();applyTheme('custom');renderSettings()">
-    </div>
-    <div class="color-row">
-      <label>Title Bar</label>
-      <input type="color" value="${S.colors.titlebar}" onchange="S.colors.titlebar=this.value;save();applyTheme('custom');renderSettings()">
-    </div>
-    <div class="color-row">
-      <label>Terminal Prompt</label>
-      <input type="color" value="${S.colors.termPrompt}" onchange="S.colors.termPrompt=this.value;save();applyTheme('custom');renderSettings()">
-    </div>
-    <button class="btn btn-s" style="margin-bottom:8px" onclick="resetColors()">Reset to Theme Defaults</button>
-
-    <div class="sl">Background Image</div>
-    <div class="vault-drop" style="margin-bottom:4px" onclick="document.getElementById('bgFileIn').click()">
-      ${S.bgImage ? '✓ Set — click to change' : 'Upload image (PNG / JPG / WebP)'}
-    </div>
-    <div style="font-size:10px;color:var(--tx4);margin-bottom:4px">Static images only. Max 8MB.</div>
-    ${S.bgImage ? `<button class="btn btn-d btn-s" onclick="S.bgImage=null;save();applyTheme(S.theme);renderSettings()">Remove</button>` : ''}
-
-    <div class="sl" style="margin-top:10px">Keybinds</div>
-    <div class="kb-editor">
-      ${Object.entries(S.keybinds).map(([action, combo]) => `
-        <div class="kb-edit-row">
-          <span class="kb-edit-label">${action}</span>
-          <input class="kb-edit-input" value="${combo}" onkeydown="captureKeybind(event,'${action}')" onfocus="this.select()" readonly>
-        </div>
-      `).join('')}
-    </div>
-    <div style="font-size:10px;color:var(--tx4);margin-top:4px">Focus a field and press a combo (e.g. Ctrl+K)</div>
-
-    <div class="sl" style="margin-top:10px">Profile</div>
-    <div style="font-size:13px;margin-bottom:6px">Signed in as <span style="color:var(--accent);font-weight:700">${CU}</span></div>
-    <div style="display:flex;gap:4px;flex-wrap:wrap">
-      <button class="btn btn-d" onclick="if(confirm('Delete this profile?')){const p=getProfiles();delete p[CU];saveProfiles(p);signOut()}">Delete</button>
-      <button class="btn" onclick="signOut()">Sign Out</button>
-      <button class="btn" onclick="exportData()">Export JSON</button>
-    </div>
-  `;
-}
-
-function resetColors(){
-  const t = THEMES[S.theme] || THEMES.matrix;
-  S.colors = {
-    accent: t.accent,
-    accentText: t.accent,
-    mainText: S.mode === 'dark' ? '#e8e8e8' : '#1a1a1a',
-    background: S.mode === 'dark' ? '#0a0a0a' : '#f5f5f3',
-    titlebar: S.mode === 'dark' ? '#161616' : '#e2e2e0',
-    termPrompt: t.accent
-  };
-  save();
-  applyTheme(S.theme);
-  renderSettings();
-}
-
-function exportData(){
-  const blob = new Blob([JSON.stringify(S, null, 2)], { type: 'application/json' });
-  const a = document.createElement('a');
-  a.href = URL.createObjectURL(blob);
-  a.download = `nept-${CU}-export.json`;
-  a.click();
-}
-
-/**
- * Capture a keybind combo from a keyboard event, store it in S.keybinds.
- * Listens for modifiers + a single key, rebuilds string like "Ctrl+K"
- */
-function captureKeybind(e, action){
-  e.preventDefault();
-  // Ignore pure modifier presses
-  if (['Control','Shift','Alt','Meta'].includes(e.key)) return;
-  const parts = [];
-  if (e.ctrlKey) parts.push('Ctrl');
-  if (e.shiftKey) parts.push('Shift');
-  if (e.altKey) parts.push('Alt');
-  if (e.metaKey) parts.push('Meta');
-  let key = e.key;
-  if (key === ' ') key = 'Space';
-  else if (key.length === 1) key = key.toUpperCase();
-  parts.push(key);
-  S.keybinds[action] = parts.join('+');
-  save();
-  renderSettings();
-}
-
-/* ============================================================
-   QUICK CAPTURE OVERLAY
-   ============================================================ */
-let captureTarget = 'task';
-function openCap(){
-  document.getElementById('capOv').classList.add('show');
-  document.getElementById('capIn').value = '';
-  document.getElementById('capIn').focus();
-}
-function closeCap(){ document.getElementById('capOv').classList.remove('show'); }
-function setCapT(t, btn){
-  captureTarget = t;
-  document.querySelectorAll('.cap-t').forEach(x => x.classList.remove('act'));
-  btn.classList.add('act');
-}
-function submitCap(){
-  const v = document.getElementById('capIn').value.trim();
-  if (!v) return;
-  if (captureTarget === 'task'){
-    S.tasks.push({ id: Date.now(), text: v, done: false, pri: 'med', q: 2 });
-    rerender('tasks','matrix');
-  } else if (captureTarget === 'note'){
-    S.notes.unshift({ id: Date.now(), title: v, body: '', updated: Date.now() });
-    S.curNote = 0;
-    rerender('notes');
-  } else if (captureTarget === 'kanban'){
-    S.kanban.todo.push({ id: Date.now(), title: v });
-    rerender('kanban');
-  } else if (captureTarget === 'card'){
-    S.flashcards.push({ id: Date.now(), q: v, a: '(edit answer)', deck: S.fcDeck !== 'all' ? S.fcDeck : 'General', ease: 2.5, interval: 1, due: Date.now() });
-    rerender('flashcards');
-  }
-  save();
-  closeCap();
-}
-
-/* ============================================================
-   FOCUS MODE — dims all windows except the focused one
-   ============================================================ */
-let focusMode = false;
-function toggleFocus(){
-  focusMode = !focusMode;
-  const btn = document.getElementById('fBtn');
-  btn.style.color = focusMode ? 'var(--accent)' : '';
-  updateDim();
-}
-function updateDim(){
-  document.querySelectorAll('.fw').forEach(w => {
-    w.classList.toggle('dimmed', focusMode && !w.classList.contains('focused'));
-  });
-}
-
-/* ============================================================
-   HELP OVERLAY — lists keybinds and terminal commands
-   ============================================================ */
-function toggleHelp(){
-  renderHelp();
-  document.getElementById('helpOv').classList.toggle('show');
-}
-function renderHelp(){
-  const el = document.getElementById('helpContent');
-  if (!el) return;
-  el.innerHTML = `
-    <div style="margin-bottom:12px">
-      ${Object.entries(S.keybinds).map(([action, combo]) =>
-        `<div class="kb-row"><span class="kb-desc">${action}</span><span class="kb-key">${combo}</span></div>`
-      ).join('')}
-    </div>
-    <div class="o-title" style="font-size:12px">TERMINAL</div>
-    <div class="kb-row"><span class="kb-desc">Add task</span><span class="kb-key">set task [pri] "text"</span></div>
-    <div class="kb-row"><span class="kb-desc">List / Done / Remove</span><span class="kb-key">ls tasks · done # · rm task #</span></div>
-    <div class="kb-row"><span class="kb-desc">Add card</span><span class="kb-key">set card "q" "a"</span></div>
-    <div class="kb-row"><span class="kb-desc">Study / Import</span><span class="kb-key">study · import cards</span></div>
-    <div class="kb-row"><span class="kb-desc">Note / Kanban</span><span class="kb-key">set note "t" · set kanban [col] "t"</span></div>
-    <div class="kb-row"><span class="kb-desc">Pomodoro</span><span class="kb-key">pomo start|stop|reset|set #</span></div>
-    <div class="kb-row"><span class="kb-desc">Windows</span><span class="kb-key">open|close [name]</span></div>
-    <div class="kb-row"><span class="kb-desc">Theme / Mode</span><span class="kb-key">theme [name] · light · dark</span></div>
-    <div class="kb-row"><span class="kb-desc">System</span><span class="kb-key">neofetch · clear</span></div>`;
-}
-
-/* ============================================================
-   GLOBAL KEYBOARD HANDLER — reads user's custom keybinds
-   ============================================================ */
-function keybindMatches(event, combo){
-  const parts = combo.split('+');
-  const mainKey = parts[parts.length - 1].toLowerCase();
-  const needsCtrl = parts.includes('Ctrl');
-  const needsShift = parts.includes('Shift');
-  const needsAlt = parts.includes('Alt');
-  const needsMeta = parts.includes('Meta');
-  if (needsCtrl !== (event.ctrlKey || event.metaKey)) return false;
-  if (needsShift !== event.shiftKey) return false;
-  if (needsAlt !== event.altKey) return false;
-  let eventKey = event.key.toLowerCase();
-  if (event.code === 'Space') eventKey = 'space';
-  return eventKey === mainKey.toLowerCase();
-}
-
-document.addEventListener('keydown', e => {
-  // Quick capture
-  if (keybindMatches(e, S.keybinds.capture)){
-    e.preventDefault();
-    openCap();
-    return;
-  }
-  // Focus mode — skip when typing in inputs
-  if (keybindMatches(e, S.keybinds.focus) && !e.target.closest('input,textarea,[contenteditable]')){
-    e.preventDefault();
-    toggleFocus();
-    return;
-  }
-  // Escape closes overlays
-  if (e.key === 'Escape'){
-    closeCap();
-    document.getElementById('helpOv').classList.remove('show');
-    closeAllDD();
-  }
-  // Help
-  if (e.key === '?' && !e.target.closest('input,textarea,[contenteditable]')){
-    e.preventDefault();
-    toggleHelp();
-  }
-});
-
-/* ============================================================
-   APP INIT — runs after successful login
-   ============================================================ */
-function initApp(){
-  pomo.timeLeft = S.pomoTimes.focus * 60;
-  applyTheme(S.theme || 'matrix');
-  document.getElementById('tbU').innerHTML = `<div class="tb-uav">${CU[0].toUpperCase()}</div>${CU}`;
-  document.getElementById('tbW').innerHTML = randomGreeting(CU);
-  // Open any windows marked open-by-default
-  Object.entries(W).forEach(([k, v]) => { if (v.o) spawnWin(k); });
-  focusW('terminal');
-}
-
-// Kick things off
-showLogin();
+  if(name!=='custom'){const t=TH[name]||TH.matrix;S.colors.accent=t.a;S.colors.accentText=t.a;S.colors.termPrompt=t.a}
+  const st=document.documentElement.style;const{r,g,b}=hexRgb(S.colors.accent);
+  document.documentElement.setAttribute('data-mode',S.mode);
+  st.setProperty('--accent',S.colors.accent);st.setProperty('--at',S.colors.accentText);st.setProperty('--tp',S.colors.termPrompt);
+  st.setProperty('--brd',`rgba(${r},${g},${b},.06)`);st.setProperty('--brd2',`rgba(${r},${g},${b},.14)`);st.setProperty('--brdA',`rgba(${r},${g},${b},.25)`);
+  if(S.mode==='dark'){const bg=S.colors.background||'#0a0a0a';st.setProperty('--g0',bg);st.setProperty('--g1',lighten(bg,6));st.setProperty('--g2',lighten(bg,12));st.setProperty('--g3',lighten(bg,18));
+  const tx=hexRgb(S.colors.mainText||'#e8e8e8');st.setProperty('--tx1',S.colors.mainText||'#e8e8e8');
+  st.setProperty('--tx2',`rgb(${Math.round(tx.r*.6)},${Math.round(tx.g*.6)},${Math.round(tx.b*.6)})`);
+  st.setProperty('--tx3',`rgb(${Math.round(tx.r*.4)},${Math.round(tx.g*.4)},${Math.round(tx.b*.4)})`);
+  st.setProperty('--tx4',`rgb(${Math.round(tx.r*.25)},${Math.round(tx.g*.25)},${Math.round(tx.b*.25)})`);
+  st.setProperty('--glass',hexA(bg,.9));st.setProperty('--tb',S.colors.titlebar||lighten(bg,12))}
+  else{st.setProperty('--g0','#f4f4f2');st.setProperty('--g1','#ebebea');st.setProperty('--g2','#e1e1df');st.setProperty('--g3','#d7d7d5');
+  const lt=hexRgb(S.colors.mainText||'#1a1a1a');st.setProperty('--tx1',S.colors.mainText||'#1a1a1a');
+  const mx=(c,t,a)=>Math.round(c+(t-c)*a);st.setProperty('--tx2',`rgb(${mx(lt.r,200,.5)},${mx(lt.g,200,.5)},${mx(lt.b,200,.5)})`);
+  st.setProperty('--tx3',`rgb(${mx(lt.r,200,.7)},${mx(lt.g,200,.7)},${mx(lt.b,200,.7)})`);
+  st.setProperty('--tx4',`rgb(${mx(lt.r,200,.85)},${mx(lt.g,200,.85)},${mx(lt.b,200,.85)})`);
+  st.setProperty('--glass','rgba(244,244,242,.88)');st.setProperty('--tb','#e1e1df')}
+  if(S.bgImage){document.body.style.backgroundImage=`url(${S.bgImage})`;document.body.classList.add('has-bg')}else{document.body.style.backgroundImage='none';document.body.classList.remove('has-bg')}
+  document.documentElement.style.fontSize=S.uiScale+'%';
+  document.querySelectorAll('.fw').forEach(el=>{el.style.background=S.mode==='light'?`rgba(235,235,234,${S.winAlpha/100})`:hexA(S.colors.background||'#0a0a0a',S.winAlpha/100)});
+  S.theme=name;save();document.title=`NEPT — ${CU}`;
+  document.getElementById('modeBtn').textContent=S.mode==='light'?'🌙 Dark Mode':'☀ Light Mode'}
+function toggleMode(){S.mode=S.mode==='dark'?'light':'dark';save();applyTheme(S.theme)}
+
+// --- CLOCK ---
+setInterval(()=>{const e=document.getElementById('clk');if(e)e.textContent=new Date().toLocaleTimeString('en-US',{hour:'2-digit',minute:'2-digit',second:'2-digit',hour12:false})},1000);
+
+// --- DROPDOWNS ---
+function tDD(b){const m=b.nextElementSibling;const o=m.classList.contains('show');cDD();if(!o){m.classList.add('show');b.classList.add('open')}}
+function cDD(){document.querySelectorAll('.dd-m').forEach(m=>m.classList.remove('show'));document.querySelectorAll('.dd-b').forEach(b=>b.classList.remove('open'))}
+document.addEventListener('click',e=>{if(!e.target.closest('.dd'))cDD()});
+
+// --- WINDOW SYSTEM ---
+const W={terminal:{l:'Terminal',o:true,x:20,y:20,w:540,h:400,r:rTerm},pomodoro:{l:'Pomodoro',o:true,x:580,y:20,w:340,h:480,r:rPomo},tasks:{l:'Tasks',o:false,x:40,y:60,w:440,h:420,r:rTasks},matrix:{l:'Matrix',o:false,x:460,y:80,w:500,h:380,r:rMx},kanban:{l:'Kanban',o:false,x:60,y:40,w:660,h:380,r:rKanban},notes:{l:'Notes',o:false,x:80,y:50,w:560,h:420,r:rNotes},planner:{l:'Planner',o:false,x:100,y:30,w:400,h:440,r:rPlanner},calendar:{l:'Calendar',o:false,x:120,y:50,w:460,h:500,r:rCal},analytics:{l:'Analytics',o:false,x:140,y:60,w:460,h:380,r:rAnalytics},scratchpad:{l:'Scratch',o:false,x:160,y:80,w:400,h:340,r:rScratch},flashcards:{l:'Cards',o:false,x:200,y:40,w:400,h:500,r:rFC},settings:{l:'Settings',o:false,x:180,y:50,w:480,h:540,r:rSettings},vault:{l:'Vault',o:false,x:200,y:40,w:440,h:440,r:rVault},browser:{l:'Browser',o:false,x:60,y:30,w:800,h:520,r:rBrowser}};
+let topZ=50,pdfC=0;
+function oW(id){if(!W[id])return;if(!W[id].o){W[id].o=true;spawnW(id)}focW(id)}
+function cW(id){if(!W[id])return;W[id].o=false;const el=document.getElementById('fw-'+id);if(el){el.style.opacity='0';el.style.transform='scale(.92) translateY(8px)';setTimeout(()=>el.remove(),300)}if(id.startsWith('pdf_'))delete W[id]}
+function spawnW(id){const v=W[id],ws=document.getElementById('ws');const bg=S.mode==='light'?`rgba(235,235,234,${S.winAlpha/100})`:hexA(S.colors.background||'#0a0a0a',S.winAlpha/100);
+const el=document.createElement('div');el.className='fw';el.id='fw-'+id;el.style.cssText=`left:${v.x}px;top:${v.y}px;width:${v.w}px;height:${v.h}px;background:${bg};transition:opacity .3s,transform .3s`;
+el.innerHTML=`<div class="rh rh-n" data-d="n" data-w="${id}"></div><div class="rh rh-s" data-d="s" data-w="${id}"></div><div class="rh rh-w" data-d="w" data-w="${id}"></div><div class="rh rh-e" data-d="e" data-w="${id}"></div><div class="rh rh-nw" data-d="nw" data-w="${id}"></div><div class="rh rh-ne" data-d="ne" data-w="${id}"></div><div class="rh rh-sw" data-d="sw" data-w="${id}"></div><div class="rh rh-se" data-d="se" data-w="${id}"></div><div class="fw-t" data-wid="${id}"><div class="fw-d"><button class="fw-dot dot-r" onclick="event.stopPropagation();cW('${id}')" aria-label="Close"></button><button class="fw-dot dot-y" onclick="event.stopPropagation();cW('${id}')" aria-label="Minimize"></button><button class="fw-dot dot-g" onclick="event.stopPropagation();maxW('${id}')" aria-label="Maximize"></button></div><span class="fw-tl">${v.l}</span></div><div class="fw-b"><div class="fw-in" id="b-${id}"></div></div>`;
+ws.appendChild(el);v.r();focW(id)}
+function maxW(id){const el=document.getElementById('fw-'+id),ws=document.getElementById('ws');if(!el)return;if(el.dataset.max==='1'){el.classList.add('snap');el.style.left=el.dataset.ol+'px';el.style.top=el.dataset.ot+'px';el.style.width=el.dataset.ow+'px';el.style.height=el.dataset.oh+'px';el.dataset.max='0';setTimeout(()=>el.classList.remove('snap'),300)}else{el.dataset.ol=parseInt(el.style.left);el.dataset.ot=parseInt(el.style.top);el.dataset.ow=el.offsetWidth;el.dataset.oh=el.offsetHeight;el.classList.add('snap');el.style.left='0';el.style.top='0';el.style.width=ws.clientWidth+'px';el.style.height=ws.clientHeight+'px';el.dataset.max='1';setTimeout(()=>el.classList.remove('snap'),300)}focW(id)}
+function focW(id){document.querySelectorAll('.fw').forEach(w=>w.classList.remove('foc'));const el=document.getElementById('fw-'+id);if(el){el.classList.add('foc');el.style.zIndex=++topZ}if(id==='terminal')setTimeout(()=>document.getElementById('tIn')?.focus(),60);if(focusMode)updateDim()}
+// Drag
+(()=>{let dg=null,ox,oy;const SN=30;document.addEventListener('mousedown',e=>{const tb=e.target.closest('.fw-t');if(!tb||e.target.closest('.fw-d'))return;const wid=tb.dataset.wid;const el=document.getElementById('fw-'+wid);if(!el||el.dataset.max==='1')return;dg={el,wid};const r=el.getBoundingClientRect();ox=e.clientX-r.left;oy=e.clientY-r.top;focW(wid);e.preventDefault()});
+document.addEventListener('mousemove',e=>{if(!dg)return;const ws=document.getElementById('ws'),wr=ws.getBoundingClientRect();dg.el.style.left=(e.clientX-wr.left-ox)+'px';dg.el.style.top=(e.clientY-wr.top-oy)+'px';const sg=document.getElementById('snapG');if(e.clientX<wr.left+SN)sg.style.cssText=`display:block;left:0;top:0;width:${wr.width/2}px;height:${wr.height}px`;else if(e.clientX>wr.right-SN)sg.style.cssText=`display:block;left:${wr.width/2}px;top:0;width:${wr.width/2}px;height:${wr.height}px`;else if(e.clientY<wr.top+SN+34)sg.style.cssText=`display:block;left:0;top:0;width:${wr.width}px;height:${wr.height}px`;else sg.style.display='none'});
+document.addEventListener('mouseup',e=>{if(!dg)return;const ws=document.getElementById('ws'),wr=ws.getBoundingClientRect();document.getElementById('snapG').style.display='none';if(e.clientX<wr.left+SN){dg.el.classList.add('snap');dg.el.style.left='0';dg.el.style.top='0';dg.el.style.width=(wr.width/2)+'px';dg.el.style.height=wr.height+'px';setTimeout(()=>dg.el.classList.remove('snap'),300)}else if(e.clientX>wr.right-SN){dg.el.classList.add('snap');dg.el.style.left=(wr.width/2)+'px';dg.el.style.top='0';dg.el.style.width=(wr.width/2)+'px';dg.el.style.height=wr.height+'px';setTimeout(()=>dg.el.classList.remove('snap'),300)}else if(e.clientY<wr.top+SN+34){dg.el.classList.add('snap');dg.el.style.left='0';dg.el.style.top='0';dg.el.style.width=wr.width+'px';dg.el.style.height=wr.height+'px';setTimeout(()=>dg.el.classList.remove('snap'),300)}dg=null})})();
+// Resize
+(()=>{let rz=null,dir,oL,oT,oW,oH,mx,my;document.addEventListener('mousedown',e=>{const h=e.target.closest('.rh');if(!h)return;dir=h.dataset.d;rz=document.getElementById('fw-'+h.dataset.w);oL=parseInt(rz.style.left);oT=parseInt(rz.style.top);oW=rz.offsetWidth;oH=rz.offsetHeight;mx=e.clientX;my=e.clientY;e.preventDefault()});
+document.addEventListener('mousemove',e=>{if(!rz)return;const dx=e.clientX-mx,dy=e.clientY-my;let nL=oL,nT=oT,nW=oW,nH=oH;if(dir.includes('e'))nW=Math.max(280,oW+dx);if(dir.includes('w')){nW=Math.max(280,oW-dx);nL=oL+oW-nW}if(dir.includes('s'))nH=Math.max(180,oH+dy);if(dir.includes('n')){nH=Math.max(180,oH-dy);nT=oT+oH-nH}rz.style.left=nL+'px';rz.style.top=nT+'px';rz.style.width=nW+'px';rz.style.height=nH+'px'});
+document.addEventListener('mouseup',()=>{rz=null})})();
+document.addEventListener('mousedown',e=>{const w=e.target.closest('.fw');if(w)focW(w.id.replace('fw-',''))});
+
+// --- TERMINAL ---
+let tH=[],tHi=-1;const MOTD=`<span class="a"> ███╗  ██╗███████╗██████╗ ████████╗\n ████╗ ██║██╔════╝██╔══██╗╚══██╔══╝\n ██╔██╗██║█████╗  ██████╔╝   ██║\n ██║╚████║██╔══╝  ██╔═══╝    ██║\n ██║ ╚███║███████╗██║        ██║\n ╚═╝  ╚══╝╚══════╝╚═╝        ╚═╝</span>\n<span class="d">──────────────────────────────────</span>\n <span class="d">Type</span> <span class="c">help</span> <span class="d">· Press</span> <span class="c">?</span>\n<span class="d">──────────────────────────────────</span>\n`;
+let tBuf=MOTD;
+function rTerm(){const el=document.getElementById('b-terminal');if(!el)return;el.innerHTML=`<div class="t-out" id="tOut">${tBuf}</div><div class="t-p"><span class="t-ps"><span style="color:var(--at)">${CU||'user'}</span><span style="color:var(--tx3)">@nept</span> <span style="color:var(--blu)">~</span> <span style="color:var(--tp)">❯</span> </span><input class="t-in" id="tIn" spellcheck="false" onkeydown="tKey(event)"></div>`;const o=document.getElementById('tOut');if(o)o.scrollTop=o.scrollHeight;document.getElementById('tIn')?.focus()}
+function tKey(e){if(e.key==='Enter'){const v=document.getElementById('tIn').value.trim();if(v){tH.unshift(v);tHi=-1;exec(v)}document.getElementById('tIn').value=''}else if(e.key==='ArrowUp'){e.preventDefault();if(tHi<tH.length-1)document.getElementById('tIn').value=tH[++tHi]}else if(e.key==='ArrowDown'){e.preventDefault();tHi>0?document.getElementById('tIn').value=tH[--tHi]:(tHi=-1,document.getElementById('tIn').value='')}}
+function tO(h){tBuf+=h+'\n';rTerm()}
+function esc(s){return String(s).replace(/</g,'&lt;').replace(/>/g,'&gt;')}
+function pQ(r){const m=[];const re=/"([^"]*)"|(\S+)/g;let x;while((x=re.exec(r))!==null)m.push(x[1]!==undefined?x[1]:x[2]);return m}
+function exec(raw){tO(`<span class="d">❯</span> <span class="c">${esc(raw)}</span>`);const p=pQ(raw);const c=p[0]?.toLowerCase();
+if(c==='help')tO(`<span class="i">commands:</span>\n  <span class="c">set task</span> [hi|med|lo] "text"\n  <span class="c">ls tasks</span> · <span class="c">done</span> # · <span class="c">rm task</span> #\n  <span class="c">set card</span> "q" "a" ["deck"]\n  <span class="c">study</span> · <span class="c">import cards</span>\n  <span class="c">set note</span> "title" · <span class="c">set kanban</span> [col] "title"\n  <span class="c">pomo</span> start|stop|reset|set #\n  <span class="c">open|close</span> [window] · <span class="c">theme</span> [name]\n  <span class="c">light</span> · <span class="c">dark</span> · <span class="c">neofetch</span> · <span class="c">clear</span>`);
+else if(c==='clear'){tBuf='';rTerm()}
+else if(c==='neofetch')tO(`<span class="a">  ${CU}@nept</span>\n  <span class="d">──────────────</span>\n  <span class="i">Theme:</span> ${S.theme} (${S.mode})\n  <span class="i">Tasks:</span> ${S.tasks.length} · <span class="i">Cards:</span> ${S.flashcards.length}\n  <span class="i">Notes:</span> ${S.notes.length} · <span class="i">Vault:</span> ${S.vault.length}\n  <span class="i">Pomo:</span> ${S.pomoSessions} (${S.pomoTotalMin}m)`);
+else if(c==='set'&&p[1]?.toLowerCase()==='task'){let pri='med',text='';const p2=(p[2]||'').toLowerCase();if(['high','hi','med','medium','low','lo'].includes(p2)){pri={hi:'high',high:'high',med:'med',medium:'med',lo:'low',low:'low'}[p2]||'med';text=p.slice(3).join(' ')}else text=p.slice(2).join(' ');if(!text)return tO('<span class="e">set task [pri] "text"</span>');S.tasks.unshift({id:Date.now(),text,done:false,pri,q:pri==='high'?1:pri==='med'?2:4,subtasks:[],due:null,estimate:null});save();tO(`<span class="s">✓ "${text}"</span>`);rr('tasks','matrix')}
+else if(c==='ls'&&p[1]?.toLowerCase()==='tasks'){if(!S.tasks.length)return tO('<span class="d">empty</span>');S.tasks.forEach((t,i)=>tO(`  ${t.done?'<span class="s">✓</span>':'<span class="d">○</span>'} <span class="d">#${i+1}</span> ${esc(t.text)}`))}
+else if(c==='done'){const i=parseInt(p[1])-1;if(isNaN(i)||!S.tasks[i])return;S.tasks[i].done=true;S.tasksDone++;save();tO('<span class="s">✓</span>');rr('tasks','matrix')}
+else if(c==='rm'&&p[1]?.toLowerCase()==='task'){const i=parseInt(p[2])-1;if(isNaN(i)||!S.tasks[i])return;S.tasks.splice(i,1);save();tO('<span class="w">✗</span>');rr('tasks','matrix')}
+else if(c==='set'&&p[1]?.toLowerCase()==='card'){if(!p[2]||!p[3])return tO('<span class="e">set card "q" "a" ["deck"]</span>');const dk=p[4]||'General';if(!S.decks.includes(dk))S.decks.push(dk);S.flashcards.push({id:Date.now(),q:p[2],a:p[3],deck:dk,ease:2.5,interval:1,due:Date.now()});save();tO(`<span class="s">✓ → ${esc(dk)}</span>`);rr('flashcards')}
+else if(c==='study')oW('flashcards');
+else if(c==='import'&&p[1]?.toLowerCase()==='cards')document.getElementById('cardFileIn').click();
+else if(c==='set'&&p[1]?.toLowerCase()==='note'){const t=p.slice(2).join(' ');if(!t)return;S.notes.unshift({id:Date.now(),title:t,body:'',updated:Date.now()});S.curNote=0;save();tO('<span class="s">✓</span>');rr('notes')}
+else if(c==='set'&&p[1]?.toLowerCase()==='kanban'){const col=p[2]?.toLowerCase(),t=p.slice(3).join(' ');if(!['backlog','todo','doing','done'].includes(col)||!t)return;S.kanban[col].push({id:Date.now(),title:t});save();tO('<span class="s">✓</span>');rr('kanban')}
+else if(c==='pomo'){const s=p[1]?.toLowerCase();if(s==='start'&&!pomo.running)togglePomo();else if(s==='stop'&&pomo.running)togglePomo();else if(s==='reset')resetPomo();else if(s==='set'){const m=parseInt(p[2]);if(m){S.pomoTimes.focus=m;save();pomo.timeLeft=m*60;updatePUI()}}}
+else if(c==='open'){if(p[1]?.toLowerCase()==='document')document.getElementById('fileIn').click();else{const w=p[1]?.toLowerCase();if(W[w])oW(w);else tO('<span class="e">unknown</span>')}}
+else if(c==='close'){const w=p[1]?.toLowerCase();if(W[w])cW(w)}
+else if(c==='theme'){const t=p[1]?.toLowerCase();if(TH[t]){applyTheme(t);rr('settings')}else tO(`<span class="e">themes: ${Object.keys(TH).join(', ')}</span>`)}
+else if(c==='light'){S.mode='light';save();applyTheme(S.theme)}
+else if(c==='dark'){S.mode='dark';save();applyTheme(S.theme)}
+else tO(`<span class="e">unknown: ${esc(c)}</span> · <span class="c">help</span>`)}
+function rr(...ids){ids.forEach(id=>{if(W[id]?.o)W[id].r()})}
+
+// --- FILE HANDLERS ---
+function handleFile(e){const f=e.target.files[0];if(!f)return;const r=new FileReader();r.onload=ev=>{S.notes.unshift({id:Date.now(),title:'📄 '+f.name,body:ev.target.result,updated:Date.now()});S.curNote=0;save();oW('notes')};r.readAsText(f);e.target.value=''}
+function handleCardFile(e){const f=e.target.files[0];if(!f)return;const r=new FileReader();r.onload=ev=>{try{const d=JSON.parse(ev.target.result);if(Array.isArray(d))d.forEach(c=>S.flashcards.push({id:Date.now()+Math.random(),q:c.q||c.front||'',a:c.a||c.back||'',deck:c.deck||S.fcDeck!=='all'?S.fcDeck:'General',ease:2.5,interval:1,due:Date.now()}))}catch(err){ev.target.result.split('\n').filter(l=>l.trim()).forEach(l=>{const p=l.split(/[,\t]/);if(p.length>=2)S.flashcards.push({id:Date.now()+Math.random(),q:p[0].trim(),a:p[1].trim(),deck:S.fcDeck!=='all'?S.fcDeck:'General',ease:2.5,interval:1,due:Date.now()})})}save();rr('flashcards')};r.readAsText(f);e.target.value=''}
+function handleBgFile(e){const f=e.target.files[0];if(!f)return;if(f.size>8*1024*1024){alert('Max 8MB');e.target.value='';return}const r=new FileReader();r.onload=ev=>{S.bgImage=ev.target.result;save();applyTheme(S.theme);rr('settings')};r.readAsDataURL(f);e.target.value=''}
+function handleVaultFiles(e){Array.from(e.target.files).forEach(f=>{if(f.size>5*1024*1024){alert(f.name+' too large (max 5MB)');return}const r=new FileReader();r.onload=ev=>{S.vault.push({id:Date.now()+Math.random(),name:f.name,size:f.size,type:f.type,data:ev.target.result,added:Date.now()});save();rr('vault')};f.type.startsWith('image')||f.type==='application/pdf'?r.readAsDataURL(f):r.readAsText(f)});e.target.value=''}
+
+// --- POMODORO ---
+const CIRC=2*Math.PI*70;let pomo={running:false,mode:'focus',timeLeft:25*60,interval:null};
+function getPT(){return S.pomoTimes[pomo.mode]*60}
+function updatePUI(){const m=Math.floor(pomo.timeLeft/60),s=pomo.timeLeft%60;const el=document.getElementById('pT');if(el)el.textContent=`${String(m).padStart(2,'0')}:${String(s).padStart(2,'0')}`;const r=document.getElementById('pR');if(r)r.style.strokeDashoffset=CIRC*(1-(1-pomo.timeLeft/getPT()))}
+function togglePomo(){if(pomo.running){clearInterval(pomo.interval);pomo.running=false}else{pomo.running=true;pomo.interval=setInterval(()=>{pomo.timeLeft--;if(pomo.timeLeft<=0){clearInterval(pomo.interval);pomo.running=false;if(pomo.mode==='focus'){S.pomoSessions++;S.pomoTotalMin+=S.pomoTimes.focus;const n=document.getElementById('pN')?.value.trim()||'';S.pomoLog.unshift({time:new Date().toLocaleTimeString('en-US',{hour:'2-digit',minute:'2-digit'}),dur:S.pomoTimes.focus,note:n});S.heatmap[27]=Math.min(4,(S.heatmap[27]||0)+1);save()}try{const c=new AudioContext(),o=c.createOscillator(),g=c.createGain();o.connect(g);g.connect(c.destination);o.frequency.value=830;g.gain.setValueAtTime(.2,c.currentTime);g.gain.exponentialRampToValueAtTime(.001,c.currentTime+1);o.start();o.stop(c.currentTime+1)}catch(e){}setPomoMode(pomo.mode==='focus'?(S.pomoSessions%4===0?'long':'short'):'focus')}updatePUI()},1000)}rPomo()}
+function resetPomo(){clearInterval(pomo.interval);pomo.running=false;pomo.timeLeft=getPT();rPomo()}
+function setPomoMode(m){pomo.mode=m;pomo.timeLeft=S.pomoTimes[m]*60;pomo.running=false;clearInterval(pomo.interval);rPomo()}
+function rPomo(){const el=document.getElementById('b-pomodoro');if(!el)return;el.innerHTML=`<div class="po-edit" id="pE"><div class="sl">Edit Timer</div>${['focus','short','long'].map(k=>`<div style="display:flex;align-items:center;gap:6px;margin-bottom:4px"><label style="font-size:12px;color:var(--tx2);width:50px">${k}</label><input class="inp" type="number" id="e${k[0].toUpperCase()}" value="${S.pomoTimes[k]}" style="width:50px;text-align:center"></div>`).join('')}<div style="display:flex;gap:4px"><button class="btn btn-a" onclick="S.pomoTimes.focus=parseInt(document.getElementById('eF').value)||25;S.pomoTimes.short=parseInt(document.getElementById('eS').value)||5;S.pomoTimes.long=parseInt(document.getElementById('eL').value)||15;save();pomo.timeLeft=getPT();document.getElementById('pE').classList.remove('show');rPomo()">OK</button><button class="btn" onclick="document.getElementById('pE').classList.remove('show')">✕</button></div></div><div class="po-w"><div class="po-rb"><svg viewBox="0 0 160 160"><circle class="po-bg" cx="80" cy="80" r="70"/><circle class="po-fg" id="pR" cx="80" cy="80" r="70"/></svg><button class="po-tm" id="pT" onclick="if(!pomo.running)document.getElementById('pE').classList.add('show')">--:--</button><div class="po-ph">${{focus:'Focus',short:'Break',long:'Long Break'}[pomo.mode]}</div></div><div style="display:flex;gap:6px;margin-top:10px"><button class="btn btn-a" onclick="togglePomo()">${pomo.running?'PAUSE':'START'}</button><button class="btn" onclick="resetPomo()">RESET</button><button class="btn" onclick="clearInterval(pomo.interval);pomo.running=false;setPomoMode(pomo.mode==='focus'?'short':'focus')">SKIP</button></div><div class="tab-bar" style="margin-top:8px;width:200px">${['focus','short','long'].map(m=>`<button class="tab ${pomo.mode===m?'act':''}" onclick="setPomoMode('${m}')">${m==='focus'?'Focus':m==='short'?'Short':'Long'}</button>`).join('')}</div><div style="display:flex;gap:5px;margin-top:8px">${[0,1,2,3].map(i=>`<div style="width:7px;height:7px;border-radius:50%;background:${i<S.pomoSessions%4?'var(--accent)':'var(--g3)'};border:1px solid ${i<S.pomoSessions%4?'var(--accent)':'var(--tx4)'}"></div>`).join('')}</div></div><textarea class="inp" id="pN" placeholder="session note..." style="margin-top:8px;min-height:32px;resize:none;font-size:12px"></textarea><div class="sl">Log</div><div class="po-log">${S.pomoLog.slice(0,6).map(e=>`<div class="po-le"><div><span style="color:var(--accent)">●</span> ${e.dur}m${e.note?` <span style="color:var(--tx4)">— ${esc(e.note)}</span>`:''}</div><span style="color:var(--tx4)">${e.time}</span></div>`).join('')}</div>`;updatePUI()}
+
+// --- TASKS (with subtasks, due dates, estimates) ---
+function rTasks(){const el=document.getElementById('b-tasks');if(!el)return;el.innerHTML=`<div style="display:flex;gap:4px;margin-bottom:6px"><input class="inp" id="tI" placeholder="new task..." onkeydown="if(event.key==='Enter')addTG()" style="flex:1"><select class="inp" id="tP" style="width:65px;font-size:12px" aria-label="Priority"><option value="high">high</option><option value="med" selected>med</option><option value="low">low</option></select><button class="btn btn-a" onclick="addTG()" aria-label="Add task">+</button></div><div style="display:flex;gap:4px;margin-bottom:8px"><input type="date" class="inp" id="tDue" style="flex:1;font-size:11px" aria-label="Due date"><input class="inp" id="tEst" placeholder="estimate (30m, 2h)" style="width:140px;font-size:11px" aria-label="Estimate"></div>${S.tasks.length?S.tasks.map((t,idx)=>`<div class="ti"><button class="tchk ${t.done?'dn':''}" onclick="tgl(${t.id})" aria-label="${t.done?'Uncheck':'Check'}"></button><div style="flex:1;min-width:0"><div class="ttxt ${t.done?'dn':''}">${esc(t.text)}</div><div class="tmeta"><span class="badge b-${t.pri==='high'?'hi':t.pri==='med'?'md':'lo'}">${t.pri}</span>${t.due?`<span style="color:var(--blu)">📅 ${t.due}</span>`:''}${t.estimate?`<span>⏱ ${esc(t.estimate)}</span>`:''}
+<button style="font-size:10px;padding:1px 6px;color:var(--tx3)" onclick="toggleSubI(${t.id})">+ sub</button><button style="font-size:10px;color:var(--red);opacity:.5;margin-left:auto" onclick="rmTask(${t.id})" aria-label="Delete">✕</button></div>${t.subtasks?.length?`<div class="subs">${t.subtasks.map(s=>`<div class="sub-i"><button class="sub-c ${s.done?'dn':''}" onclick="tglSub(${t.id},${s.id})" aria-label="${s.done?'Uncheck':'Check'} subtask"></button><span style="${s.done?'text-decoration:line-through;color:var(--tx4)':''}">${esc(s.text)}</span></div>`).join('')}</div>`:''}<div id="subI-${t.id}" style="display:none;margin-top:4px"><div style="display:flex;gap:4px"><input class="inp" id="subIn-${t.id}" placeholder="subtask..." style="font-size:12px" onkeydown="if(event.key==='Enter')addSub(${t.id})"><button class="btn btn-a btn-s" onclick="addSub(${t.id})">+</button></div></div></div></div>`).join(''):'<div style="color:var(--tx4);font-size:12px;padding:10px">no tasks yet</div>'}`}
+function addTG(){const i=document.getElementById('tI');if(!i?.value.trim())return;const p=document.getElementById('tP').value;const d=document.getElementById('tDue').value;const e=document.getElementById('tEst').value;S.tasks.unshift({id:Date.now(),text:i.value.trim(),done:false,pri:p,q:p==='high'?1:p==='med'?2:4,subtasks:[],due:d||null,estimate:e||null});i.value='';document.getElementById('tDue').value='';document.getElementById('tEst').value='';save();rTasks();rr('matrix','calendar')}
+function tgl(id){const t=S.tasks.find(x=>x.id===id);if(t){t.done=!t.done;if(t.done)S.tasksDone++;save();rTasks();rr('matrix')}}
+function rmTask(id){S.tasks=S.tasks.filter(t=>t.id!==id);save();rTasks();rr('matrix','calendar')}
+function toggleSubI(id){const el=document.getElementById('subI-'+id);if(el){el.style.display=el.style.display==='none'?'block':'none';if(el.style.display==='block')document.getElementById('subIn-'+id)?.focus()}}
+function addSub(tid){const inp=document.getElementById('subIn-'+tid);if(!inp?.value.trim())return;const t=S.tasks.find(x=>x.id===tid);if(t){if(!t.subtasks)t.subtasks=[];t.subtasks.push({id:Date.now(),text:inp.value.trim(),done:false});inp.value='';save();rTasks()}}
+function tglSub(tid,sid){const t=S.tasks.find(x=>x.id===tid);if(t){const s=t.subtasks?.find(x=>x.id===sid);if(s){s.done=!s.done;save();rTasks()}}}
+
+// --- KANBAN ---
+let kD=null;
+function rKanban(){const el=document.getElementById('b-kanban');if(!el)return;el.innerHTML=`<div class="kb-board">${['backlog','todo','doing','done'].map(c=>`<div class="kb-col"><div class="kb-h"><span class="kb-n">${c==='todo'?'To Do':c==='doing'?'In Progress':c[0].toUpperCase()+c.slice(1)} <span class="kb-cnt">${(S.kanban[c]||[]).length}</span></span>${c!=='done'?`<button class="btn btn-s" onclick="addKB('${c}')">+</button>`:''}</div><div class="kb-cards" ondragover="event.preventDefault()" ondrop="dKB('${c}')">${(S.kanban[c]||[]).map(cd=>`<div class="kb-cd" draggable="true" ondragstart="kD={id:${cd.id},from:'${c}'}">${esc(cd.title)}</div>`).join('')}</div></div>`).join('')}</div>`}
+function addKB(c){const w=document.querySelector(`[ondrop="dKB('${c}')"]`);if(!w)return;const ex=w.querySelector('.kb-add-in');if(ex){ex.focus();return}const inp=document.createElement('input');inp.className='inp kb-add-in';inp.placeholder='card title...';inp.style.cssText='font-size:12px;margin-bottom:4px';inp.onkeydown=e=>{if(e.key==='Enter'&&inp.value.trim()){S.kanban[c].push({id:Date.now(),title:inp.value.trim()});save();rKanban()}if(e.key==='Escape')inp.remove()};inp.onblur=()=>{if(!inp.value.trim())inp.remove()};w.prepend(inp);inp.focus()}
+function dKB(to){if(!kD)return;let cd;for(const c of Object.keys(S.kanban)){const i=S.kanban[c].findIndex(x=>x.id===kD.id);if(i>=0){cd=S.kanban[c].splice(i,1)[0];break}}if(cd){S.kanban[to].push(cd);save();rKanban()}kD=null}
+
+// --- NOTES (with backlinks) ---
+function rNotes(){const el=document.getElementById('b-notes');if(!el)return;const notes=S.notes||[];const ci=S.curNote||0;const cur=notes[ci];const backlinks=cur?.title?notes.filter((n,i)=>i!==ci&&n.body?.includes(`[[${cur.title}]]`)):[];
+el.innerHTML=`<div style="display:flex;gap:8px;height:100%"><div style="width:130px;flex-shrink:0"><button class="btn btn-a btn-s" style="width:100%;margin-bottom:4px" onclick="newNote()">+ new</button><div class="nl">${notes.map((n,i)=>`<button class="ni ${i===ci?'act':''}" onclick="selNote(${i})">${esc(n.title||'untitled')}</button>`).join('')}</div></div><div style="flex:1;display:flex;flex-direction:column">${cur?`<input class="inp" id="nT" value="${esc(cur.title||'')}" placeholder="title..." style="margin-bottom:4px;font-size:16px;font-weight:700" oninput="updNoteT(this.value)"><div style="font-size:9px;color:var(--tx4);margin-bottom:4px">Use [[Title]] for backlinks</div><textarea class="inp" id="nB" placeholder="start typing..." style="flex:1;min-height:160px;line-height:1.6;font-size:13px;resize:none" oninput="updNoteB(this.value)">${esc(cur.body||'')}</textarea>${backlinks.length?`<div style="margin-top:6px"><div class="sl">Backlinks</div><div style="display:flex;gap:4px;flex-wrap:wrap">${backlinks.map(bl=>{const i=notes.indexOf(bl);return`<button class="btn btn-s" style="color:var(--accent)" onclick="selNote(${i})">${esc(bl.title)}</button>`}).join('')}</div></div>`:''}<div style="margin-top:6px;text-align:right"><button class="btn btn-d btn-s" style="opacity:.6" onclick="delNote()">delete</button></div>`:'<div style="color:var(--tx4);padding:20px;text-align:center">click + new to start</div>'}</div></div>`}
+function newNote(){S.notes.unshift({id:Date.now(),title:'',body:'',updated:Date.now()});S.curNote=0;save();rNotes();setTimeout(()=>document.getElementById('nT')?.focus(),50)}
+function selNote(i){S.curNote=i;save();rNotes()}
+function updNoteT(v){if(S.notes[S.curNote]){S.notes[S.curNote].title=v;save()}}
+function updNoteB(v){if(S.notes[S.curNote]){S.notes[S.curNote].body=v;save()}}
+function delNote(){if(!S.notes[S.curNote])return;S.notes.splice(S.curNote,1);S.curNote=Math.max(0,S.curNote-1);save();rNotes()}
+
+// --- PLANNER ---
+function rPlanner(){const el=document.getElementById('b-planner');if(!el)return;const td=new Date().toISOString().slice(0,10);if(!S.planner[td])S.planner[td]={};el.innerHTML=`<div class="sl">${new Date().toLocaleDateString('en-US',{weekday:'long',month:'short',day:'numeric'})}</div>${Array.from({length:17},(_,i)=>i+6).map(h=>{const l=h<12?`${h} am`:h===12?'12 pm':`${h-12} pm`;const v=S.planner[td][h]||'';return`<div class="pl-r"><div class="pl-t">${l}</div><div class="pl-s ${v?'filled':''}" contenteditable="true" oninput="svPl('${td}',${h},this)" onblur="if(!this.textContent.trim())this.classList.remove('filled')">${esc(v)}</div></div>`}).join('')}`}
+function svPl(d,h,el){if(!S.planner[d])S.planner[d]={};S.planner[d][h]=el.textContent;el.classList.toggle('filled',!!el.textContent.trim());save()}
+
+// --- CALENDAR (with events, alerts, Google Calendar) ---
+let calDate=new Date();let calSelDay=null;
+function rCal(){const el=document.getElementById('b-calendar');if(!el)return;if(!S.calEvents)S.calEvents=[];const y=calDate.getFullYear(),mo=calDate.getMonth();const today=new Date();const first=new Date(y,mo,1).getDay();const days=new Date(y,mo+1,0).getDate();const prev=new Date(y,mo,0).getDate();
+// Gather all event dates + task due dates for this month
+const eventDates={};S.calEvents.forEach(ev=>{const d=new Date(ev.date);if(d.getFullYear()===y&&d.getMonth()===mo){const day=d.getDate();if(!eventDates[day])eventDates[day]=[];eventDates[day].push(ev)}});
+S.tasks.filter(t=>t.due).forEach(t=>{const d=new Date(t.due);if(d.getFullYear()===y&&d.getMonth()===mo){const day=d.getDate();if(!eventDates[day])eventDates[day]=[];eventDates[day].push({id:t.id,title:'📋 '+t.text,date:t.due,time:'',alert:false,type:'task'})}});
+let html=`<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px"><button class="btn btn-s" onclick="calDate.setMonth(calDate.getMonth()-1);rCal()">←</button><span style="font-size:14px;font-weight:700">${calDate.toLocaleDateString('en-US',{month:'long',year:'numeric'})}</span><button class="btn btn-s" onclick="calDate.setMonth(calDate.getMonth()+1);rCal()">→</button></div>`;
+// Google Calendar connect
+html+=`<div style="display:flex;gap:4px;margin-bottom:8px"><button class="btn btn-s" onclick="promptGCal()">📅 Connect Google Calendar</button><button class="btn btn-s" onclick="document.getElementById('icsFileIn').click()">Import .ics</button></div>`;
+html+=`<div class="cal-g">`;
+['Sun','Mon','Tue','Wed','Thu','Fri','Sat'].forEach(d=>html+=`<div class="cal-h">${d}</div>`);
+for(let i=first-1;i>=0;i--)html+=`<div class="cal-d other">${prev-i}</div>`;
+for(let d=1;d<=days;d++){const isToday=d===today.getDate()&&mo===today.getMonth()&&y===today.getFullYear();const hasEv=!!eventDates[d];const isSel=calSelDay===d;
+html+=`<button class="cal-d ${isToday?'today':''} ${hasEv?'has-t':''}" onclick="calClickDay(${d})" style="${isSel?'outline:2px solid var(--accent);outline-offset:-2px;border-radius:4px':''}">${d}</button>`}
+const rem=42-(first+days);for(let d=1;d<=rem;d++)html+=`<div class="cal-d other">${d}</div>`;
+html+='</div>';
+// Selected day detail panel
+if(calSelDay){
+const selDate=`${y}-${String(mo+1).padStart(2,'0')}-${String(calSelDay).padStart(2,'0')}`;
+const dayEvents=(eventDates[calSelDay]||[]);
+html+=`<div style="margin-top:10px;padding:10px;background:var(--g2);border-radius:5px;border:1px solid var(--brd)">`;
+html+=`<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px"><span style="font-size:13px;font-weight:700">${new Date(y,mo,calSelDay).toLocaleDateString('en-US',{weekday:'long',month:'short',day:'numeric'})}</span><button class="btn btn-s" onclick="calSelDay=null;rCal()">✕</button></div>`;
+// List events for this day
+if(dayEvents.length){dayEvents.forEach((ev,i)=>{html+=`<div style="display:flex;align-items:center;gap:6px;padding:4px 6px;background:var(--g1);border-radius:4px;margin-bottom:3px;font-size:12px">${ev.alert?'🔔 ':''}<span style="flex:1">${esc(ev.title)}</span>${ev.time?`<span style="color:var(--tx4);font-size:10px">${ev.time}</span>`:''}<button style="color:var(--red);font-size:10px" onclick="rmCalEv(${ev.id})" aria-label="Delete">✕</button></div>`})}
+// Add new event form
+html+=`<div style="margin-top:6px;display:flex;gap:4px"><input class="inp" id="calEvTitle" placeholder="event..." style="flex:1;font-size:12px" onkeydown="if(event.key==='Enter')addCalEv('${selDate}')"><input type="time" class="inp" id="calEvTime" style="width:90px;font-size:11px"><label style="display:flex;align-items:center;gap:3px;font-size:10px;color:var(--tx3);white-space:nowrap"><input type="checkbox" id="calEvAlert" style="accent-color:var(--accent)">🔔</label><button class="btn btn-a btn-s" onclick="addCalEv('${selDate}')">+</button></div>`;
+html+=`</div>`}
+el.innerHTML=html}
+function calClickDay(d){calSelDay=calSelDay===d?null:d;rCal()}
+function addCalEv(date){const title=document.getElementById('calEvTitle')?.value.trim();if(!title)return;const time=document.getElementById('calEvTime')?.value||'';const alert=document.getElementById('calEvAlert')?.checked||false;
+S.calEvents.push({id:Date.now(),title,date,time,alert,type:'event'});save();rCal();
+// Schedule browser alert if enabled
+if(alert&&time){scheduleAlert(title,date,time)}}
+function rmCalEv(id){S.calEvents=S.calEvents.filter(e=>e.id!==id);save();rCal()}
+function scheduleAlert(title,date,time){
+const target=new Date(date+'T'+time);const now=Date.now();const delay=target.getTime()-now;
+if(delay>0&&delay<86400000*7){setTimeout(()=>{if(Notification.permission==='granted')new Notification('NEPT — '+title);else alert('🔔 NEPT: '+title)},delay)}
+// Request notification permission on first use
+if(Notification.permission==='default')Notification.requestPermission()}
+// Check alerts on load
+function checkAlerts(){if(!S.calEvents)return;const now=new Date();S.calEvents.forEach(ev=>{if(ev.alert&&ev.time){scheduleAlert(ev.title,ev.date,ev.time)}})}
+// Google Calendar — public ICS URL approach
+function promptGCal(){
+const existing=S.gcalUrl||'';
+const w=document.getElementById('b-calendar');if(!w)return;
+const inp=document.createElement('div');inp.innerHTML=`<div style="margin-top:8px;padding:10px;background:var(--g2);border-radius:5px;border:1px solid var(--brd)"><div class="sl">Google Calendar</div><div style="font-size:10px;color:var(--tx3);margin-bottom:6px">Paste your public Google Calendar ICS URL.<br>In Google Calendar: Settings → Calendar → Integrate → Public URL to ICS</div><div style="display:flex;gap:4px"><input class="inp" id="gcalUrlIn" value="${esc(existing)}" placeholder="https://calendar.google.com/...ical" style="flex:1;font-size:11px"><button class="btn btn-a btn-s" onclick="importGCal()">Import</button></div></div>`;
+w.appendChild(inp.firstElementChild)}
+function importGCal(){const url=document.getElementById('gcalUrlIn')?.value.trim();if(!url)return;S.gcalUrl=url;save();
+// Fetch and parse ICS (uses a CORS proxy for GitHub Pages)
+const proxy='https://api.allorigins.win/raw?url=';
+fetch(proxy+encodeURIComponent(url)).then(r=>r.text()).then(ics=>{parseICS(ics);rCal()}).catch(err=>{alert('Could not fetch calendar. Make sure the URL is public.');console.error(err)})}
+function parseICS(text){
+// Simple ICS parser — extracts VEVENT blocks
+const events=text.split('BEGIN:VEVENT');events.shift();events.forEach(ev=>{
+const get=k=>{const m=ev.match(new RegExp(k+':(.+)'));return m?m[1].trim():''};
+const summary=get('SUMMARY');const dtstart=get('DTSTART');const dtend=get('DTEND');
+if(!summary||!dtstart)return;
+// Parse date (handles both 20250421 and 20250421T090000Z formats)
+let dateStr='',timeStr='';
+if(dtstart.length>=8){const y=dtstart.substr(0,4),m=dtstart.substr(4,2),d=dtstart.substr(6,2);dateStr=y+'-'+m+'-'+d;if(dtstart.length>=15){const hh=dtstart.substr(9,2),mm=dtstart.substr(11,2);timeStr=hh+':'+mm}}
+// Avoid duplicates
+if(S.calEvents.find(e=>e.title===summary&&e.date===dateStr))return;
+S.calEvents.push({id:Date.now()+Math.random(),title:'📅 '+summary,date:dateStr,time:timeStr,alert:false,type:'gcal'})});save()}
+
+// --- FLASHCARDS (with decks) ---
+function rFC(){const el=document.getElementById('b-flashcards');if(!el)return;if(!S.decks)S.decks=['General'];if(!S.fcDeck)S.fcDeck='all';
+const filtered=S.fcDeck==='all'?S.flashcards:S.flashcards.filter(c=>c.deck===S.fcDeck);const due=filtered.filter(c=>!c.due||c.due<=Date.now());
+el.innerHTML=`<div style="display:flex;gap:4px;margin-bottom:8px;flex-wrap:wrap"><button class="btn btn-s ${S.fcDeck==='all'?'btn-a':''}" onclick="S.fcDeck='all';S.fcIdx=0;save();rFC()">All (${S.flashcards.length})</button>${S.decks.map(d=>`<button class="btn btn-s ${S.fcDeck===d?'btn-a':''}" onclick="S.fcDeck='${esc(d)}';S.fcIdx=0;save();rFC()">${esc(d)} (${S.flashcards.filter(c=>c.deck===d).length})</button>`).join('')}<button class="btn btn-s" onclick="showDI()">+ deck</button><span id="dIW" style="display:none"><input class="inp" id="dIN" placeholder="deck name..." style="width:120px;display:inline;font-size:11px" onkeydown="if(event.key==='Enter')confirmDI()"><button class="btn btn-s btn-a" onclick="confirmDI()">✓</button></span></div>
+<div class="tab-bar"><button class="tab act" onclick="fcT(0,this)">Study (${due.length})</button><button class="tab" onclick="fcT(1,this)">All</button><button class="tab" onclick="fcT(2,this)">Add</button></div>
+<div class="tc act">${!due.length?'<div style="text-align:center;padding:20px;color:var(--tx3)">✓ all caught up</div>':`<div class="fc" id="fcCard" onclick="this.classList.toggle('flip')"><div class="fc-in"><div class="fc-f fc-fr"><span class="fc-fl">Q · ${esc(due[S.fcIdx%due.length].deck||'General')}</span>${esc(due[S.fcIdx%due.length].q)}</div><div class="fc-f fc-bk"><span class="fc-fl">A</span>${esc(due[S.fcIdx%due.length].a)}</div></div></div><div style="text-align:center;font-size:12px;color:var(--tx4)">${(S.fcIdx%due.length)+1}/${due.length}</div><div class="fc-rate"><button class="fc-rb fc-ra" onclick="rateC(${due[S.fcIdx%due.length].id},0)">Again</button><button class="fc-rb fc-rh" onclick="rateC(${due[S.fcIdx%due.length].id},1)">Hard</button><button class="fc-rb fc-rg" onclick="rateC(${due[S.fcIdx%due.length].id},2)">Good</button><button class="fc-rb fc-re" onclick="rateC(${due[S.fcIdx%due.length].id},3)">Easy</button></div><div style="display:flex;justify-content:center;gap:4px;margin-top:6px"><button class="btn btn-s" onclick="S.fcIdx=Math.max(0,S.fcIdx-1);save();rFC()">←</button><button class="btn btn-s" onclick="S.flashcards.sort(()=>Math.random()-.5);S.fcIdx=0;save();rFC()">⟳</button><button class="btn btn-s" onclick="S.fcIdx++;save();rFC()">→</button></div>`}</div>
+<div class="tc">${filtered.length?`<div class="fc-list">${filtered.map(f=>{const gi=S.flashcards.indexOf(f);return`<div class="fc-li"><span>${esc(f.q)}</span><span style="color:var(--tx4);font-size:9px;margin:0 4px">${esc(f.deck||'General')} · ${f.interval||1}d</span><button style="color:var(--red);font-size:11px" onclick="S.flashcards.splice(${gi},1);save();rFC()" aria-label="Delete">✕</button></div>`}).join('')}</div>${S.fcDeck!=='all'?`<button class="btn btn-d btn-s" style="margin-top:6px" onclick="if(confirm('Delete deck?')){S.flashcards.forEach(c=>{if(c.deck==='${esc(S.fcDeck)}')c.deck='General'});S.decks=S.decks.filter(d=>d!=='${esc(S.fcDeck)}');S.fcDeck='all';save();rFC()}">Delete deck</button>`:''}`:'<div style="color:var(--tx4);padding:10px">no cards</div>'}</div>
+<div class="tc"><div style="display:flex;flex-direction:column;gap:6px"><input class="inp" id="fcQ" placeholder="question..." onkeydown="if(event.key==='Enter')document.getElementById('fcAn').focus()"><input class="inp" id="fcAn" placeholder="answer..." onkeydown="if(event.key==='Enter')addFC()"><select class="inp" id="fcDS" style="font-size:12px">${S.decks.map(d=>`<option value="${esc(d)}" ${d===S.fcDeck&&S.fcDeck!=='all'?'selected':''}>${esc(d)}</option>`).join('')}</select><button class="btn btn-a" onclick="addFC()">Add Card (Enter)</button><div class="sl">Import</div><button class="btn" onclick="document.getElementById('cardFileIn').click()">Import File</button><div class="sl">Export</div><button class="btn" onclick="exportDeck()">Export Current Deck (JSON)</button><div style="font-size:10px;color:var(--tx4)">JSON or CSV</div></div></div>`}
+function fcT(i,btn){document.querySelectorAll('#b-flashcards .tab').forEach(t=>t.classList.remove('act'));btn.classList.add('act');document.querySelectorAll('#b-flashcards .tc').forEach((t,j)=>t.classList.toggle('act',j===i))}
+function rateC(id,r){const c=S.flashcards.find(x=>x.id===id);if(!c)return;if(r===0){c.interval=1;c.ease=Math.max(1.3,c.ease-.2)}else if(r===1)c.interval=Math.max(1,Math.ceil(c.interval*1.2));else if(r===2){c.interval=Math.ceil(c.interval*c.ease);c.ease+=.05}else{c.interval=Math.ceil(c.interval*c.ease*1.3);c.ease+=.15}c.due=Date.now()+c.interval*86400000;S.fcIdx++;save();rFC()}
+function addFC(){const q=document.getElementById('fcQ')?.value.trim(),a=document.getElementById('fcAn')?.value.trim();if(!q||!a)return;const dk=document.getElementById('fcDS')?.value||'General';S.flashcards.push({id:Date.now(),q,a,deck:dk,ease:2.5,interval:1,due:Date.now()});save();rFC()}
+function showDI(){const w=document.getElementById('dIW');if(w){w.style.display='inline';document.getElementById('dIN')?.focus()}}
+function confirmDI(){const inp=document.getElementById('dIN');const name=inp?.value.trim();if(!name)return;if(!S.decks.includes(name))S.decks.push(name);S.fcDeck=name;S.fcIdx=0;save();rFC()}
+
+// --- MATRIX (Eisenhower) ---
+function rMx(){const el=document.getElementById('b-matrix');if(!el)return;el.innerHTML=`<div class="mx-g">${[{q:1,l:'Urgent + Important',c:'q1'},{q:2,l:'Important',c:'q2'},{q:3,l:'Urgent',c:'q3'},{q:4,l:'Neither',c:'q4'}].map(({q,l,c})=>`<div class="mx-q ${c}"><div class="mx-ql"><span class="mx-dt"></span>${l}</div>${S.tasks.filter(t=>t.q===q&&!t.done).map(t=>`<button class="mx-i" onclick="tgl(${t.id})">${esc(t.text)}</button>`).join('')||'<div style="font-size:11px;color:var(--tx4)">—</div>'}</div>`).join('')}</div>`}
+
+// --- ANALYTICS ---
+function rAnalytics(){const el=document.getElementById('b-analytics');if(!el)return;el.innerHTML=`<div class="an-g"><div class="an-c"><h4>Focus</h4><div class="an-b">${S.pomoTotalMin}m</div><div style="font-size:10px;color:var(--tx4)">${S.pomoSessions} sessions</div></div><div class="an-c"><h4>Done</h4><div class="an-b">${S.tasksDone||0}</div></div><div class="an-c"><h4>Cards</h4><div class="an-b">${S.flashcards.length}</div></div><div class="an-c"><h4>Notes</h4><div class="an-b">${S.notes.length}</div></div><div class="an-c" style="grid-column:1/-1"><h4>Heatmap (4 weeks)</h4><div class="hm">${S.heatmap.map(v=>`<div class="hm-c ${v>0?'l'+Math.min(v,4):''}"></div>`).join('')}</div></div></div>`}
+
+// --- SCRATCHPAD ---
+function rScratch(){const el=document.getElementById('b-scratchpad');if(!el)return;el.innerHTML=`<textarea class="inp" style="height:100%;resize:none;line-height:1.6;font-size:13px" placeholder="scratchpad..." oninput="S.scratchpad=this.value;save()">${esc(S.scratchpad||'')}</textarea>`}
+
+// --- VAULT (with PDF pop-out) ---
+function rVault(){const el=document.getElementById('b-vault');if(!el)return;const icons={'text/':'📄','application/json':'📋','application/pdf':'📑','image/':'🖼','default':'📁'};function gi(t){for(const[k,v]of Object.entries(icons))if(t?.startsWith(k))return v;return icons.default}
+el.innerHTML='<button class="v-drop" onclick="document.getElementById(\'vaultFileIn\').click()">📂 Click to upload files</button>';if(S.vault.length){el.innerHTML+='<div class="sl">'+S.vault.length+' file'+(S.vault.length===1?'':'s')+'</div>';S.vault.forEach(function(f,i){el.innerHTML+='<button class="v-item" onclick="openVF('+i+')"><span style="font-size:16px">'+gi(f.type)+'</span><div style="flex:1;min-width:0"><div style="white-space:nowrap;overflow:hidden;text-overflow:ellipsis">'+esc(f.name)+'</div><div style="font-size:10px;color:var(--tx4)">'+(f.size/1024).toFixed(1)+'KB</div></div><span class="v-del" onclick="event.stopPropagation();S.vault.splice('+i+',1);save();rVault()">✕</span></button>'})}else{el.innerHTML+='<div style="color:var(--tx4);font-size:12px;text-align:center;padding:20px">empty vault</div>'}}
+function openVF(i){var f=S.vault[i];if(!f)return;if(f.type==='application/pdf'||f.type?.startsWith('image')){pdfC++;var wid='pdf_'+pdfC;W[wid]={l:f.name.length>20?f.name.substring(0,18)+'…':f.name,o:true,x:100+(pdfC*30),y:80+(pdfC*30),w:f.type==='application/pdf'?700:500,h:f.type==='application/pdf'?600:500,r:function(){var el=document.getElementById('b-'+wid);if(!el)return;if(f.type==='application/pdf'){el.innerHTML='<iframe class="pdf-v" src="'+f.data+'"></iframe>'}else{el.innerHTML='<img src="'+f.data+'" style="max-width:100%;max-height:100%;display:block;margin:0 auto;border-radius:5px">'}}};spawnW(wid)}else{S.notes.unshift({id:Date.now(),title:'📄 '+f.name,body:f.data,updated:Date.now()});S.curNote=0;save();oW('notes')}}
+
+// --- EXPORT DECK ---
+function exportDeck(){
+const cards=S.fcDeck==='all'?S.flashcards:S.flashcards.filter(c=>c.deck===S.fcDeck);
+const name=S.fcDeck==='all'?'all-cards':S.fcDeck;
+const blob=new Blob([JSON.stringify(cards.map(c=>({q:c.q,a:c.a,deck:c.deck})),null,2)],{type:'application/json'});
+const a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download='nept-deck-'+name.replace(/\s+/g,'-')+'.json';a.click()}
+
+// --- ICS FILE IMPORT ---
+function handleICSFile(e){const f=e.target.files[0];if(!f)return;const r=new FileReader();r.onload=ev=>{parseICS(ev.target.result);rCal()};r.readAsText(f);e.target.value=''}
+
+// --- BROWSER (mini Google inside a floating window) ---
+let browserUrl='https://www.google.com/webhp?igu=1';
+function rBrowser(){const el=document.getElementById('b-browser');if(!el)return;
+el.innerHTML=`<div style="display:flex;gap:4px;margin-bottom:6px"><input class="inp" id="brUrl" value="${esc(browserUrl)}" placeholder="https://..." style="flex:1;font-size:12px" onkeydown="if(event.key==='Enter')navBrowser()"><button class="btn btn-a btn-s" onclick="navBrowser()">Go</button><button class="btn btn-s" onclick="browserUrl='https://www.google.com/webhp?igu=1';rBrowser()">🏠</button></div><iframe id="brFrame" src="${browserUrl}" style="width:100%;height:calc(100% - 36px);border:1px solid var(--brd);border-radius:5px;background:#fff" sandbox="allow-scripts allow-same-origin allow-forms allow-popups"></iframe>`}
+function navBrowser(){let url=document.getElementById('brUrl')?.value.trim();if(!url)return;if(!url.startsWith('http'))url='https://'+url;browserUrl=url;rBrowser()}
+
+// --- SETTINGS ---
+function rSettings(){const el=document.getElementById('b-settings');if(!el)return;el.innerHTML=`<div class="sl">Main Theme</div><div class="th-g">${Object.entries(TH).map(([k,t])=>`<button class="th-c ${S.theme===k?'act':''}" onclick="applyTheme('${k}');rSettings()"><div style="display:flex;gap:2px;justify-content:center;margin-bottom:3px"><div style="width:12px;height:12px;border-radius:3px;background:${t.a}"></div></div>${t.n}</button>`).join('')}</div>
+<div class="sl">Mode</div><div style="display:flex;gap:4px;margin-bottom:8px"><button class="btn ${S.mode==='dark'?'btn-a':''}" onclick="S.mode='dark';save();applyTheme(S.theme);rSettings()">🌙 Dark</button><button class="btn ${S.mode==='light'?'btn-a':''}" onclick="S.mode='light';save();applyTheme(S.theme);rSettings()">☀ Light</button></div>
+<div class="sl">UI Scale</div><div class="sc"><label>Zoom</label><input type="range" min="50" max="200" value="${S.uiScale||100}" oninput="S.uiScale=parseInt(this.value);document.documentElement.style.fontSize=this.value+'%';this.nextElementSibling.textContent=this.value+'%';save()"><span class="sv">${S.uiScale||100}%</span></div>
+<div class="sl">Transparency</div><div class="sc"><label>Windows</label><input type="range" min="30" max="100" value="${S.winAlpha||90}" oninput="S.winAlpha=parseInt(this.value);this.nextElementSibling.textContent=this.value+'%';save();applyTheme(S.theme)"><span class="sv">${S.winAlpha||90}%</span></div>
+<div class="sl">Colors</div>${[{k:'accent',l:'Accent'},{k:'accentText',l:'Accent Text'},{k:'mainText',l:'Main Text'},{k:'background',l:'Background'},{k:'titlebar',l:'Title Bar'},{k:'termPrompt',l:'Terminal Prompt'}].map(({k,l})=>`<div class="cc"><label>${l}</label><input type="color" value="${S.colors?.[k]||'#87FF65'}" onchange="S.colors.${k}=this.value;save();applyTheme('custom');rSettings()"></div>`).join('')}
+<button class="btn btn-s" style="margin-bottom:8px" onclick="const t=TH[S.theme]||TH.matrix;S.colors={accent:t.a,accentText:t.a,mainText:S.mode==='dark'?'#e8e8e8':'#1a1a1a',background:S.mode==='dark'?'#0a0a0a':'#f4f4f2',titlebar:S.mode==='dark'?'#171717':'#e1e1df',termPrompt:t.a};save();applyTheme(S.theme);rSettings()">Reset to Defaults</button>
+<div class="sl">Background</div><button class="v-drop" style="margin-bottom:4px" onclick="document.getElementById('bgFileIn').click()">${S.bgImage?'✓ Set — click to change':'Upload image (PNG/JPG/WebP)'}</button><div style="font-size:10px;color:var(--tx4);margin-bottom:4px">Max 8MB. Static images only.</div>${S.bgImage?`<button class="btn btn-d btn-s" onclick="S.bgImage=null;save();applyTheme(S.theme);rSettings()">Remove</button>`:''}
+<div class="sl" style="margin-top:8px">Profile</div><div style="font-size:14px;margin-bottom:6px">Signed in as <span style="color:var(--accent);font-weight:700">${CU}</span></div>
+<div style="display:flex;gap:4px;flex-wrap:wrap"><button class="btn btn-d" onclick="if(confirm('Delete profile?')){idbDel('profiles',CU);signOut()}">Delete</button><button class="btn" onclick="signOut()">Sign Out</button><button class="btn" onclick="const b=new Blob([JSON.stringify(S,null,2)],{type:'application/json'});const a=document.createElement('a');a.href=URL.createObjectURL(b);a.download='nept-'+CU+'.json';a.click()">Export</button></div>`}
+
+// --- QUICK CAPTURE ---
+let capT='task';function openCap(){document.getElementById('capOv').style.display='flex';document.getElementById('capIn').value='';document.getElementById('capIn').focus()}
+function closeCap(){document.getElementById('capOv').style.display='none'}
+function setCapT(t,b){capT=t;document.querySelectorAll('.cap-t').forEach(x=>x.classList.remove('act'));b.classList.add('act')}
+function submitCap(){const v=document.getElementById('capIn').value.trim();if(!v)return;if(capT==='task'){S.tasks.unshift({id:Date.now(),text:v,done:false,pri:'med',q:2,subtasks:[],due:null,estimate:null});rr('tasks','matrix','calendar')}else if(capT==='note'){S.notes.unshift({id:Date.now(),title:v,body:'',updated:Date.now()});S.curNote=0;rr('notes')}else if(capT==='kanban'){S.kanban.todo.push({id:Date.now(),title:v});rr('kanban')}else if(capT==='card'){S.flashcards.push({id:Date.now(),q:v,a:'(edit)',deck:S.fcDeck!=='all'?S.fcDeck:'General',ease:2.5,interval:1,due:Date.now()});rr('flashcards')}save();closeCap()}
+
+// --- FOCUS MODE ---
+let focusMode=false;function toggleFocus(){focusMode=!focusMode;document.getElementById('fBtn').style.color=focusMode?'var(--accent)':'';updateDim()}
+function updateDim(){document.querySelectorAll('.fw').forEach(w=>{w.classList.toggle('dim',focusMode&&!w.classList.contains('foc'))})}
+
+// --- HELP ---
+function toggleHelp(){const el=document.getElementById('helpOv');el.style.display=el.style.display==='flex'?'none':'flex';if(el.style.display==='flex')renderHelp()}
+function renderHelp(){document.getElementById('helpC').innerHTML=`<div class="kb-r"><span class="kb-d">Quick capture</span><span class="kb-k">Ctrl+Space</span></div><div class="kb-r"><span class="kb-d">Focus mode</span><span class="kb-k">Ctrl+F</span></div><div class="kb-r"><span class="kb-d">Help</span><span class="kb-k">?</span></div><div class="kb-r"><span class="kb-d">Close overlay</span><span class="kb-k">Esc</span></div><div style="margin-top:10px"><div class="ov-t" style="font-size:13px">Terminal</div><div class="kb-r"><span class="kb-d">Task</span><span class="kb-k">set task [pri] "text"</span></div><div class="kb-r"><span class="kb-d">Manage</span><span class="kb-k">ls tasks · done # · rm task #</span></div><div class="kb-r"><span class="kb-d">Card</span><span class="kb-k">set card "q" "a" ["deck"]</span></div><div class="kb-r"><span class="kb-d">Study</span><span class="kb-k">study · import cards</span></div><div class="kb-r"><span class="kb-d">Note/Kanban</span><span class="kb-k">set note "t" · set kanban [col] "t"</span></div><div class="kb-r"><span class="kb-d">Pomo</span><span class="kb-k">pomo start|stop|reset|set #</span></div><div class="kb-r"><span class="kb-d">Window</span><span class="kb-k">open|close [name]</span></div><div class="kb-r"><span class="kb-d">Theme</span><span class="kb-k">theme [name] · light · dark</span></div><div class="kb-r"><span class="kb-d">System</span><span class="kb-k">neofetch · clear</span></div></div>`}
+
+// --- KEYS ---
+document.addEventListener('keydown',e=>{if((e.ctrlKey||e.metaKey)&&e.code==='Space'){e.preventDefault();openCap()}if((e.ctrlKey||e.metaKey)&&e.key==='f'&&!e.target.closest('input,textarea,[contenteditable]')){e.preventDefault();toggleFocus()}if(e.key==='Escape'){closeCap();document.getElementById('helpOv').style.display='none';cDD()}if(e.key==='?'&&!e.target.closest('input,textarea,[contenteditable]')){e.preventDefault();toggleHelp()}});
+
+// --- INIT ---
+function initApp(){pomo.timeLeft=S.pomoTimes.focus*60;applyTheme(S.theme||'matrix');document.getElementById('tbU').innerHTML=`<span class="tb-av">${CU[0].toUpperCase()}</span>${CU}`;document.getElementById('tbW').innerHTML=rg(CU);Object.entries(W).forEach(([k,v])=>{if(v.o)spawnW(k)});focW('terminal');checkAlerts()}
 </script>
 </body>
 </html>
